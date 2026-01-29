@@ -1,0 +1,45 @@
+{
+  "name": "Retrospectiva (Ágil)",
+  "description": "Plantilla de retrospectiva de sprint para mejora continua.",
+  "sections": [
+    {
+      "title": "Sprint",
+      "instruction": "Nombre/número del sprint y rango de fechas",
+      "format": "string"
+    },
+    {
+      "title": "Asistencia",
+      "instruction": "Lista de participantes",
+      "format": "list"
+    },
+    {
+      "title": "Empezar a Hacer",
+      "instruction": "Acciones o experimentos para empezar en el próximo sprint",
+      "format": "list",
+      "item_format": "| **Idea** | **Proponente** |\n| --- | --- |"
+    },
+    {
+      "title": "Dejar de Hacer",
+      "instruction": "Prácticas a detener",
+      "format": "list",
+      "item_format": "| **Práctica** | **Razón** |\n| --- | --- |"
+    },
+    {
+      "title": "Continuar Haciendo",
+      "instruction": "Prácticas a continuar",
+      "format": "list",
+      "item_format": "| **Práctica** | **Notas** |\n| --- | --- |"
+    },
+    {
+      "title": "Tareas Pendientes",
+      "instruction": "Experimentos concretos con responsables y métricas de éxito",
+      "format": "list",
+      "item_format": "| **Responsable** | **Tarea** | **Fecha** | **Métrica de Éxito** |\n| --- | --- | --- | --- |"
+    },
+    {
+      "title": "Notas y Votaciones",
+      "instruction": "Resumen y elementos más votados",
+      "format": "paragraph"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "name": "Sincronización de Proyecto",
+  "description": "Reunión semanal o quincenal de estado del proyecto enfocada en hitos y riesgos.",
+  "sections": [
+    {
+      "title": "Fecha y Hora",
+      "instruction": "Fecha, hora de inicio/fin, nombre del facilitador",
+      "format": "string"
+    },
+    {
+      "title": "Asistentes",
+      "instruction": "Lista de asistentes y sus roles",
+      "format": "list"
+    },
+    {
+      "title": "Hitos y Estado",
+      "instruction": "Hitos actuales con estado y fecha estimada de completación",
+      "format": "list",
+      "item_format": "| **Hito** | **Estado** | **Fecha Estimada** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Resumen de Progreso",
+      "instruction": "Párrafo corto resumiendo el progreso desde la última reunión de sincronización",
+      "format": "paragraph"
+    },
+    {
+      "title": "Riesgos y Mitigaciones",
+      "instruction": "Lista de principales riesgos con nivel de impacto, plan de mitigación y responsable",
+      "format": "list",
+      "item_format": "| **Riesgo** | **Impacto** | **Mitigación** | **Responsable** |\n| --- | --- | --- | --- |"
+    },
+    {
+      "title": "Decisiones Clave",
+      "instruction": "Decisiones tomadas en esta reunión con justificación y marca de tiempo",
+      "format": "list",
+      "item_format": "| **Decisión** | **Justificación** | **Marca de Tiempo** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Tareas Pendientes",
+      "instruction": "Tareas con responsables, fechas de entrega, prioridad y estado",
+      "format": "list",
+      "item_format": "| **Responsable** | **Tarea** | **Fecha** | **Prioridad** | **Estado** |\n| --- | --- | --- | --- | --- |"
+    },
+    {
+      "title": "Documentos Relacionados",
+      "instruction": "Enlaces a documentos relevantes, tickets o diseños discutidos",
+      "format": "list",
+      "item_format": "| **Título del Documento** | **URL** | **Tipo** |\n| --- | --- | --- |"
+    }
+  ]
+}

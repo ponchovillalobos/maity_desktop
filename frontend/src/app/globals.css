@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes vibrate {
+  0% {
+    transform: translate(0);
+  }
+
+  20% {
+    transform: translate(-2px, 2px);
+  }
+
+  40% {
+    transform: translate(-2px, -2px);
+  }
+
+  60% {
+    transform: translate(2px, 2px);
+  }
+
+  80% {
+    transform: translate(2px, -2px);
+  }
+
+  100% {
+    transform: translate(0);
+  }
+}
+
+.animate-vibrate {
+  animation: vibrate 0.3s linear;
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out forwards;
+}
+
+.delay-75 {
+  animation-delay: 75ms;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-150 {
+  animation-delay: 150ms;
+}
+
+@layer base {
+  /* === PALETA MAITY - MODO CLARO === */
+  :root {
+    --background: 0 0% 100%;           /* #ffffff - Blanco MAITY */
+    --foreground: 0 0% 0%;             /* #000000 - Negro MAITY */
+    --card: 0 0% 100%;                 /* #ffffff - Blanco MAITY */
+    --card-foreground: 0 0% 0%;        /* #000000 - Negro MAITY */
+    --popover: 0 0% 100%;              /* #ffffff - Blanco MAITY */
+    --popover-foreground: 0 0% 0%;     /* #000000 - Negro MAITY */
+    --primary: 341 100% 50%;           /* #ff0050 - Rosa MAITY */
+    --primary-foreground: 0 0% 100%;   /* #ffffff */
+    --secondary: 240 3% 91%;           /* #e7e7e9 - Gris MAITY */
+    --secondary-foreground: 0 0% 0%;   /* #000000 - Negro MAITY */
+    --muted: 240 3% 91%;               /* #e7e7e9 - Gris MAITY */
+    --muted-foreground: 0 0% 40%;      /* Gris medio */
+    --accent: 341 100% 50%;            /* #ff0050 - Rosa MAITY */
+    --accent-foreground: 0 0% 100%;    /* #ffffff */
+    --destructive: 341 100% 50%;       /* #ff0050 - Rosa MAITY */
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 3% 85%;              /* Variación Gris MAITY */
+    --input: 240 3% 85%;               /* Variación Gris MAITY */
+    --ring: 341 100% 50%;              /* #ff0050 - Rosa MAITY */
+    --radius: 0.5rem;
+    /* Charts con colores MAITY */
+    --chart-1: 341 100% 50%;           /* Rosa MAITY */
+    --chart-2: 233 88% 62%;            /* Azul MAITY */
+    --chart-3: 157 83% 51%;            /* Verde MAITY */
+    --chart-4: 341 100% 65%;           /* Rosa claro */
+    --chart-5: 233 88% 72%;            /* Azul claro */
+  }
+
+  /* === PALETA MAITY - MODO OSCURO === */
+  .dark {
+    --background: 0 0% 0%;             /* #000000 - Negro MAITY */
+    --foreground: 0 0% 100%;           /* #ffffff - Blanco MAITY */
+    --card: 0 0% 5%;                   /* Negro suave */
+    --card-foreground: 0 0% 100%;      /* #ffffff */
+    --popover: 0 0% 5%;                /* Negro suave */
+    --popover-foreground: 0 0% 100%;   /* #ffffff */
+    --primary: 341 100% 50%;           /* #ff0050 - Rosa MAITY */
+    --primary-foreground: 0 0% 100%;   /* #ffffff */
+    --secondary: 0 0% 10%;             /* Negro suave */
+    --secondary-foreground: 0 0% 100%; /* #ffffff */
+    --muted: 0 0% 15%;                 /* Gris oscuro */
+    --muted-foreground: 0 0% 60%;      /* Gris claro */
+    --accent: 341 100% 50%;            /* #ff0050 - Rosa MAITY */
+    --accent-foreground: 0 0% 100%;    /* #ffffff */
+    --destructive: 341 100% 40%;       /* Rosa oscuro */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 20%;                /* Gris oscuro */
+    --input: 0 0% 20%;                 /* Gris oscuro */
+    --ring: 341 100% 50%;              /* #ff0050 - Rosa MAITY */
+    /* Charts modo oscuro */
+    --chart-1: 341 100% 55%;           /* Rosa MAITY claro */
+    --chart-2: 233 88% 67%;            /* Azul MAITY claro */
+    --chart-3: 157 83% 56%;            /* Verde MAITY claro */
+    --chart-4: 341 100% 70%;           /* Rosa más claro */
+    --chart-5: 233 88% 77%;            /* Azul más claro */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  /* html, */
+  body {
+    @apply bg-background text-foreground;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  /* Make the window draggable */
+  .titlebar {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
+  /* Custom scrollbar styles */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #d0d0d3;  /* Gris MAITY variación */
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #8a8a8d;  /* Gris MAITY más oscuro */
+  }
+
+  /* Firefox scrollbar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #d0d0d3 transparent;  /* Gris MAITY */
+  }
+
+  /* BlockNote Editor - Override fixed dimensions for responsive layout */
+  .bn-container {
+    width: 100% !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
+  .bn-editor {
+    width: 100% !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
+  /* Disable internal scrolling - let parent handle all scrolling */
+  .ProseMirror {
+    overflow: visible !important;
+  }
+
+  /* Ensure BlockNote content area is responsive */
+  .bn-block-outer {
+    max-width: 100% !important;
+  }
+
+  .bn-default-styles {
+    max-width: none !important;
+  }
+
+  /* Disable scrolling on any BlockNote wrapper elements */
+  [data-node-type] {
+    overflow: visible !important;
+  }
+}

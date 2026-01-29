@@ -1,0 +1,44 @@
+{
+  "name": "Reunión con Cliente / Ventas",
+  "description": "Captura objetivos del cliente, entregables y próximos pasos.",
+  "sections": [
+    {
+      "title": "Datos de la Reunión",
+      "instruction": "Fecha, hora, ubicación/modalidad, gerente de cuenta",
+      "format": "string"
+    },
+    {
+      "title": "Asistentes",
+      "instruction": "Asistentes del cliente y proveedor con sus roles",
+      "format": "list"
+    },
+    {
+      "title": "Objetivos y Criterios de Éxito",
+      "instruction": "Lo que el cliente quiere lograr y cómo se medirá el éxito",
+      "format": "paragraph"
+    },
+    {
+      "title": "Entregables Acordados",
+      "instruction": "Entregables, responsables y fechas de entrega",
+      "format": "list",
+      "item_format": "| **Entregable** | **Responsable** | **Fecha** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Términos Comerciales Discutidos",
+      "instruction": "Precios, SLAs, términos de pago o elementos contractuales discutidos",
+      "format": "paragraph"
+    },
+    {
+      "title": "Riesgos y Preocupaciones",
+      "instruction": "Preocupaciones del cliente, bloqueos o elementos de escalación",
+      "format": "list",
+      "item_format": "| **Preocupación** | **Impacto** | **Responsable** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Próximos Pasos",
+      "instruction": "Acciones, responsables y fechas de entrega",
+      "format": "list",
+      "item_format": "| **Responsable** | **Acción** | **Fecha** |\n| --- | --- | --- |"
+    }
+  ]
+}

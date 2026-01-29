@@ -1,0 +1,27 @@
+{
+  "name": "Notas de Reunión Estándar",
+  "description": "Plantilla estándar para reuniones generales, enfocada en resultados clave y acciones.",
+  "sections": [
+    {
+      "title": "Resumen",
+      "instruction": "Proporciona un breve resumen ejecutivo de un párrafo de toda la reunión.",
+      "format": "paragraph"
+    },
+    {
+      "title": "Decisiones Clave",
+      "instruction": "Lista las decisiones más importantes tomadas durante la reunión.",
+      "format": "list"
+    },
+    {
+      "title": "Tareas Pendientes",
+      "instruction": "Lista todas las tareas asignadas con sus responsables y fecha de entrega. Siempre agrega referencia al segmento de transcripción y marca de tiempo en la tabla.",
+      "format": "list",
+      "item_format": "| **Responsable** | Tarea | Fecha | Segmento de Referencia | Marca de Tiempo |\n| --- | --- | --- | --- | --- |"
+    },
+    {
+      "title": "Puntos Destacados",
+      "instruction": "Resume los principales temas de discusión, argumentos clave e insights importantes.",
+      "format": "paragraph"
+    }
+  ]
+}

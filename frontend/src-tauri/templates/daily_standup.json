@@ -1,0 +1,39 @@
+{
+  "name": "Standup Diario",
+  "description": "Actualizaciones diarias con tiempo limitado para equipos de ingeniería/producto.",
+  "sections": [
+    {
+      "title": "Fecha",
+      "instruction": "YYYY-MM-DD",
+      "format": "string"
+    },
+    {
+      "title": "Asistentes",
+      "instruction": "Lista de participantes presentes",
+      "format": "list"
+    },
+    {
+      "title": "Ayer",
+      "instruction": "Lo que completé ayer (viñetas cortas)",
+      "format": "list",
+      "example_item_format": "| **Responsable** | **Trabajo Completado** |\n| --- | --- |"
+    },
+    {
+      "title": "Hoy",
+      "instruction": "Trabajo planeado para hoy (viñetas cortas)",
+      "format": "list",
+      "example_item_format": "| **Responsable** | **Trabajo Planeado** |\n| --- | --- |"
+    },
+    {
+      "title": "Bloqueos",
+      "instruction": "Cualquier impedimento y responsable si se conoce",
+      "format": "list",
+      "item_format": "| **Responsable** | **Bloqueo** | Impacto |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Notas",
+      "instruction": "Notas rápidas opcionales o anuncios",
+      "format": "paragraph"
+    }
+  ]
+}

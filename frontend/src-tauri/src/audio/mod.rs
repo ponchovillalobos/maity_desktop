@@ -19,6 +19,8 @@ pub mod recording_state;
 pub mod pipeline;
 pub mod stream;
 pub mod recording_manager;
+pub mod recording_helpers;
+pub mod recording_lifecycle;
 pub mod recording_commands;
 pub mod recording_preferences;
 pub mod recording_saver;

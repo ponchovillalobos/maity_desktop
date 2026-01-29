@@ -82,11 +82,12 @@
       "Bash(\"target\\\\release\\\\maity-desktop.exe\")",
       "Bash(pnpm run tauri:build:*)",
       "Bash(git -C \"D:\\\\Proyectos de Kiro\\\\Grbadora_Maity_V3_Meetle\\\\meetily\" log --oneline --all --grep=\"backend\\\\|Backend\")",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(git mv:*)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "supabase"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

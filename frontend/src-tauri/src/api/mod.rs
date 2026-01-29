@@ -1,5 +1,7 @@
-pub mod api;
-pub mod commands;
+pub mod models;
+pub mod client;
+pub mod endpoints;
 
-pub use api::*;
-// Don't re-export commands to avoid conflicts - lib.rs will import directly
+pub use models::*;
+pub use client::*;
+pub use endpoints::*;

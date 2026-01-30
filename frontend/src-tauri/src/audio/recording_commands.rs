@@ -21,8 +21,12 @@ pub use super::transcription::TranscriptUpdate;
 pub use super::recording_lifecycle::{
     start_recording,
     start_recording_with_devices,
+    start_recording_with_meeting_name,
+    start_recording_with_devices_and_meeting,
     stop_recording,
     is_recording_active as is_recording_active_fn,
+    pause_recording,
+    resume_recording,
 };
 
 use super::recording_lifecycle::{IS_RECORDING, RECORDING_MANAGER};

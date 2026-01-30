@@ -565,6 +565,7 @@ pub async fn stop_recording<R: Runtime>(
 // ============================================================================
 
 /// Pause the current recording
+#[tauri::command]
 pub async fn pause_recording<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     info!("Pausing recording");
 
@@ -594,6 +595,7 @@ pub async fn pause_recording<R: Runtime>(app: AppHandle<R>) -> Result<(), String
 }
 
 /// Resume the current recording
+#[tauri::command]
 pub async fn resume_recording<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     info!("Resuming recording");
 

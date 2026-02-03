@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useRef } from "react"
 import { Switch } from "@/components/ui/switch"
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, LogOut } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import Analytics from "@/lib/analytics"
 import AnalyticsConsentSwitch from "@/components/analytics/AnalyticsConsentSwitch"
 import { useConfig, NotificationSettings } from "@/contexts/ConfigContext"
+import { useAuth } from "@/contexts/AuthContext"
 
 export function PreferenceSettings() {
   const {
@@ -16,6 +17,8 @@ export function PreferenceSettings() {
     loadPreferences,
     updateNotificationSettings
   } = useConfig();
+
+  const { signOut } = useAuth();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -223,6 +226,21 @@ export function PreferenceSettings() {
       {/* Analytics Section */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-[#e7e7e9] dark:border-gray-700 p-6 shadow-sm">
         <AnalyticsConsentSwitch />
+      </div>
+
+      {/* Account Section */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-[#e7e7e9] dark:border-gray-700 p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-[#000000] dark:text-white mb-4">Cuenta</h3>
+        <p className="text-sm text-[#4a4a4c] dark:text-gray-300 mb-4">
+          Cerrar sesión de tu cuenta de Google
+        </p>
+        <button
+          onClick={signOut}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          Cerrar sesión
+        </button>
       </div>
     </div>
   )

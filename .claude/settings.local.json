@@ -83,7 +83,10 @@
       "Bash(pnpm run tauri:build:*)",
       "Bash(git -C \"D:\\\\Proyectos de Kiro\\\\Grbadora_Maity_V3_Meetle\\\\meetily\" log --oneline --all --grep=\"backend\\\\|Backend\")",
       "Bash(echo:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(export PATH=\"$USERPROFILE/.cargo/bin:$PATH:/c/Program Files/CMake/bin\")",
+      "Bash(rustup:*)",
+      "Bash(python3:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

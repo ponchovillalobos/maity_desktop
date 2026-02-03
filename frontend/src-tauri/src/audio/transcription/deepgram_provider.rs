@@ -52,7 +52,12 @@ struct DeepgramAlternative {
 
 #[derive(Debug, Clone)]
 pub struct DeepgramConfig {
+    /// User's own API key (long-lived, stored in settings)
     pub api_key: String,
+    /// Temporary token from cloud proxy (short-lived, ~5 min TTL)
+    pub cloud_token: Option<String>,
+    /// Whether to use cloud proxy token instead of user's API key
+    pub use_cloud_proxy: bool,
     pub model: String,
     pub language: String,
     pub encoding: String,
@@ -66,6 +71,8 @@ impl Default for DeepgramConfig {
     fn default() -> Self {
         Self {
             api_key: String::new(),
+            cloud_token: None,
+            use_cloud_proxy: false,
             model: "nova-2".to_string(),
             language: "en".to_string(), // English by default
             encoding: "linear16".to_string(),
@@ -104,6 +111,19 @@ impl DeepgramRealtimeTranscriber {
         }
     }
 
+    /// Create a new Deepgram transcriber using cloud proxy token
+    /// This is used when the user doesn't have their own API key
+    pub fn with_cloud_token(token: String) -> Self {
+        let mut config = DeepgramConfig::default();
+        config.cloud_token = Some(token);
+        config.use_cloud_proxy = true;
+
+        Self {
+            config,
+            is_connected: Arc::new(Mutex::new(false)),
+        }
+    }
+
     /// Create with full configuration
     pub fn with_config(config: DeepgramConfig) -> Self {
         Self {
@@ -120,6 +140,41 @@ impl DeepgramRealtimeTranscriber {
     /// Set the language (e.g., "es", "en", "multi")
     pub fn set_language(&mut self, language: String) {
         self.config.language = language;
+    }
+
+    /// Update the cloud proxy token (for token refresh)
+    pub fn set_cloud_token(&mut self, token: String) {
+        self.config.cloud_token = Some(token);
+        self.config.use_cloud_proxy = true;
+    }
+
+    /// Check if using cloud proxy
+    pub fn is_using_cloud_proxy(&self) -> bool {
+        self.config.use_cloud_proxy
+    }
+
+    /// Get the effective authentication token (cloud token or API key)
+    fn get_auth_token(&self) -> Option<&str> {
+        if self.config.use_cloud_proxy {
+            self.config.cloud_token.as_deref()
+        } else if !self.config.api_key.is_empty() {
+            Some(&self.config.api_key)
+        } else {
+            None
+        }
+    }
+
+    /// Get the authorization header format based on token type
+    fn get_auth_header(&self) -> Option<String> {
+        self.get_auth_token().map(|token| {
+            if self.config.use_cloud_proxy {
+                // Cloud proxy tokens use Bearer format (JWT from Deepgram /v1/auth/grant)
+                format!("Bearer {}", token)
+            } else {
+                // User's own API key uses Token format
+                format!("Token {}", token)
+            }
+        })
     }
 
     /// Build the WebSocket URL with query parameters
@@ -181,20 +236,21 @@ impl DeepgramRealtimeTranscriber {
         audio: Vec<f32>,
         language: Option<String>,
     ) -> Result<TranscriptResult, TranscriptionError> {
-        if self.config.api_key.is_empty() {
-            return Err(TranscriptionError::EngineFailed(
-                "Deepgram API key is not configured".to_string(),
-            ));
-        }
+        // Get authentication header (works for both cloud proxy and user API key)
+        let auth_header = self.get_auth_header().ok_or_else(|| {
+            TranscriptionError::EngineFailed(
+                "Deepgram authentication not configured (no API key or cloud token)".to_string(),
+            )
+        })?;
 
         // Build URL with language override if provided
         let url = self.build_websocket_url(language.as_deref());
-        debug!("Deepgram WebSocket URL: {}", url.replace(&self.config.api_key, "***"));
+        debug!("Deepgram WebSocket URL: {}", url.split('?').next().unwrap_or(&url));
 
         // Create WebSocket request with authorization header
         let request = Request::builder()
             .uri(&url)
-            .header("Authorization", format!("Token {}", self.config.api_key))
+            .header("Authorization", &auth_header)
             .header("Host", "api.deepgram.com")
             .header("Upgrade", "websocket")
             .header("Connection", "Upgrade")
@@ -399,15 +455,15 @@ impl TranscriptionProvider for DeepgramRealtimeTranscriber {
     }
 
     async fn is_model_loaded(&self) -> bool {
-        // Deepgram is cloud-based, always "ready" if API key is configured
-        !self.config.api_key.is_empty()
+        // Deepgram is cloud-based, "ready" if API key or cloud token is configured
+        self.get_auth_token().is_some()
     }
 
     async fn get_current_model(&self) -> Option<String> {
-        if self.config.api_key.is_empty() {
-            None
-        } else {
+        if self.get_auth_token().is_some() {
             Some(self.config.model.clone())
+        } else {
+            None
         }
     }
 

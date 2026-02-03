@@ -138,33 +138,17 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
         "deepgram" => {
             info!("🔍 Validating Deepgram cloud provider...");
 
-            // Debug: Log what we received from config
-            info!("📋 Deepgram validation - model: '{}', api_key present: {}",
-                  config.model,
-                  config.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false));
-
-            // Get API key from config (database) or environment variable
-            let api_key = config.api_key.clone()
-                .filter(|k| !k.is_empty())
-                .or_else(|| {
-                    info!("🔍 API key not in config, checking DEEPGRAM_API_KEY environment variable...");
-                    std::env::var("DEEPGRAM_API_KEY").ok().filter(|k| !k.is_empty())
-                });
-
-            match api_key {
-                Some(key) => {
-                    info!("✅ Deepgram API key configured (length: {} chars), cloud transcription ready", key.len());
-                    Ok(())
-                }
-                None => {
-                    // DO NOT fallback silently - return error so user knows to configure API key
-                    error!("❌ DEEPGRAM_API_KEY not configured!");
-                    error!("   Please configure your Deepgram API key in Settings → Transcription");
-                    error!("   Or set the DEEPGRAM_API_KEY environment variable");
-                    Err(
-                        "Clave API de Deepgram no configurada. Por favor ve a Configuración → Transcripción e ingresa tu clave API de Deepgram.".to_string()
-                    )
-                }
+            // Check if we have a valid cloud token (obtained from edge function proxy)
+            if super::deepgram_commands::has_cached_cloud_token() {
+                info!("✅ Deepgram cloud token disponible, transcripción en la nube lista");
+                Ok(())
+            } else {
+                // No cloud token available - user needs to be authenticated
+                warn!("⚠️ No hay token de Deepgram disponible");
+                warn!("   El frontend debe obtener un token del cloud proxy antes de iniciar la grabación");
+                Err(
+                    "Token de Deepgram no disponible. Por favor asegúrate de estar autenticado con tu cuenta de Google.".to_string()
+                )
             }
         }
         other => {
@@ -248,31 +232,17 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
             info!("🌐 Initializing Deepgram cloud transcription engine");
             println!("🔷 [ENGINE] Inicializando Deepgram cloud transcription engine");
 
-            // Debug: Log what we received from config
-            info!("📋 Deepgram config - model: '{}', api_key present: {}",
-                  config.model,
-                  config.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false));
-            println!("📋 [ENGINE] Deepgram config - model: '{}', api_key present: {}, api_key length: {}",
-                  config.model,
-                  config.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false),
-                  config.api_key.as_ref().map(|k| k.len()).unwrap_or(0));
+            // Get cloud token from cache (should have been set by frontend before starting recording)
+            let cloud_token = super::deepgram_commands::get_cached_cloud_token();
 
-            // Get API key from config (database) or environment variable
-            let api_key = config.api_key.clone()
-                .filter(|k| !k.is_empty())
-                .or_else(|| {
-                    info!("🔍 API key not in config, checking DEEPGRAM_API_KEY environment variable...");
-                    std::env::var("DEEPGRAM_API_KEY").ok().filter(|k| !k.is_empty())
-                });
+            match cloud_token {
+                Some(token) => {
+                    info!("✅ Deepgram cloud token found");
+                    println!("🔑 [ENGINE] Cloud token encontrado");
 
-            match api_key {
-                Some(key) => {
-                    info!("✅ Deepgram API key found (length: {} chars)", key.len());
-                    println!("🔑 [ENGINE] API key encontrada ({} caracteres)", key.len());
-
-                    // Create Deepgram provider with configuration
-                    println!("🔧 [ENGINE] Creando DeepgramRealtimeTranscriber...");
-                    let mut deepgram = super::deepgram_provider::DeepgramRealtimeTranscriber::new(key);
+                    // Create Deepgram provider with cloud token
+                    println!("🔧 [ENGINE] Creando DeepgramRealtimeTranscriber con cloud token...");
+                    let mut deepgram = super::deepgram_provider::DeepgramRealtimeTranscriber::with_cloud_token(token);
 
                     // Apply model from config if specified, otherwise use nova-2
                     if !config.model.is_empty() && config.model != "deepgram" {
@@ -280,11 +250,11 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                         deepgram.set_model(config.model.clone());
                     }
 
-                    // Apply language from environment if set, default to English
+                    // Apply language from environment if set, default to multi (auto-detect)
                     let language = std::env::var("DEEPGRAM_LANGUAGE")
                         .ok()
                         .filter(|l| !l.is_empty())
-                        .unwrap_or_else(|| "en".to_string());
+                        .unwrap_or_else(|| "multi".to_string());
 
                     info!("🌍 Setting Deepgram language to: {}", language);
                     deepgram.set_language(language);
@@ -297,12 +267,11 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                     Ok(TranscriptionEngine::Provider(Arc::new(deepgram)))
                 }
                 None => {
-                    // DO NOT fallback silently - return error so user knows to configure API key
-                    error!("❌ DEEPGRAM_API_KEY not configured!");
-                    error!("   Please configure your Deepgram API key in Settings → Transcription");
-                    error!("   Or set the DEEPGRAM_API_KEY environment variable");
+                    // No cloud token available - user needs to be authenticated
+                    error!("❌ No hay token de Deepgram disponible!");
+                    error!("   El frontend debe obtener un token del cloud proxy antes de iniciar la grabación");
                     Err(
-                        "Clave API de Deepgram no configurada. Por favor ve a Configuración → Transcripción e ingresa tu clave API de Deepgram, luego reinicia la grabación.".to_string()
+                        "Token de Deepgram no disponible. Por favor asegúrate de estar autenticado con tu cuenta de Google.".to_string()
                     )
                 }
             }

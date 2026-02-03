@@ -8,6 +8,7 @@ import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/components/recording/recordingNotification';
 import { toast } from 'sonner';
+import { getDeepgramToken, hasValidCachedToken } from '@/lib/deepgram';
 
 interface UseRecordingStartReturn {
   handleRecordingStart: () => Promise<void>;
@@ -64,18 +65,43 @@ export function useRecordingStart(
     try {
       switch (provider) {
         case 'deepgram': {
-          // For Deepgram (cloud), just check if API key is configured
-          const apiKey = transcriptModelConfig?.apiKey;
-          if (apiKey && apiKey.trim().length > 0) {
-            console.log('✅ Deepgram API key is configured, ready to record');
+          // For Deepgram (cloud), get a temporary token from the cloud proxy
+          // This requires the user to be authenticated with Supabase
+          try {
+            // Check if we already have a valid cached token
+            if (hasValidCachedToken()) {
+              console.log('✅ Deepgram cloud token already cached, ready to record');
+              return { ready: true, isDownloading: false };
+            }
+
+            // Fetch a new token from the edge function
+            console.log('🔄 Fetching Deepgram cloud token...');
+            const { token, expires_in } = await getDeepgramToken();
+
+            // Pass the token to the Rust backend
+            await invoke('set_deepgram_cloud_token', { token, expiresIn: expires_in });
+            console.log('✅ Deepgram cloud token obtained and set, ready to record');
+
             return { ready: true, isDownloading: false };
+          } catch (error) {
+            console.error('❌ Failed to get Deepgram cloud token:', error);
+            const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+
+            // Check if the error is authentication-related
+            if (errorMsg.includes('authenticated') || errorMsg.includes('session')) {
+              return {
+                ready: false,
+                isDownloading: false,
+                error: 'Debes iniciar sesión con tu cuenta de Google para usar transcripción en la nube.'
+              };
+            }
+
+            return {
+              ready: false,
+              isDownloading: false,
+              error: `Error al obtener token de Deepgram: ${errorMsg}`
+            };
           }
-          console.log('❌ Deepgram API key not configured');
-          return {
-            ready: false,
-            isDownloading: false,
-            error: 'Clave API de Deepgram no configurada. Por favor configúrala en Ajustes → Transcripción.'
-          };
         }
 
         case 'parakeet': {

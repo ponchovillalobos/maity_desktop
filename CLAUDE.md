@@ -463,6 +463,63 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
   - `enhance/*`: Mejoras de funcionalidades
   - `feat/*`: Funcionalidades nuevas
 
+## Deepgram Cloud Proxy (Transcripción en la Nube)
+
+El sistema de transcripción en la nube usa Deepgram como proveedor. **Los usuarios NO configuran su propia API key** - siempre se usa un token temporal obtenido via cloud proxy.
+
+### Arquitectura
+
+```
+┌─────────────────────┐     ┌──────────────────────────┐     ┌─────────────────┐
+│   App Tauri/Rust    │────>│  Supabase Edge Function  │────>│  Deepgram API   │
+│                     │     │  (deepgram-token)        │     │  /v1/auth/grant │
+│  1. Usuario inicia  │     │                          │     │                 │
+│     grabación       │     │  2. Valida JWT Supabase  │     │  3. Genera JWT  │
+│                     │<────│  4. Retorna token temp   │<────│     temporal    │
+│  5. Conecta a       │     └──────────────────────────┘     └─────────────────┘
+│     Deepgram WS     │─────────────────────────────────────────────────────────>
+│     con token temp  │                                      Deepgram WebSocket
+└─────────────────────┘
+```
+
+### Flujo de Autenticación
+
+1. **Usuario inicia grabación** con provider "deepgram"
+2. **Frontend** (`useRecordingStart.ts`):
+   - Llama a `getDeepgramToken()` de `frontend/src/lib/deepgram.ts`
+   - Esto hace fetch a la Edge Function `deepgram-token` con el JWT de Supabase
+3. **Edge Function** (`supabase/functions/deepgram-token`):
+   - Valida el JWT del usuario
+   - Solicita token temporal a Deepgram API (`/v1/auth/grant`, TTL: 5 min)
+   - Retorna el token temporal al frontend
+4. **Frontend** pasa el token a Rust via `set_deepgram_cloud_token`
+5. **Rust** (`engine.rs`) crea el transcriber con `DeepgramRealtimeTranscriber::with_cloud_token(token)`
+6. **Rust** conecta a Deepgram WebSocket con `Authorization: Bearer {token}`
+
+### Archivos Relevantes
+
+| Archivo | Descripción |
+|---------|-------------|
+| `frontend/src/lib/deepgram.ts` | Cliente TypeScript para obtener tokens del cloud proxy |
+| `frontend/src/hooks/useRecordingStart.ts` | Hook que obtiene token antes de iniciar grabación |
+| `frontend/src-tauri/src/audio/transcription/deepgram_commands.rs` | Comandos Tauri para gestionar tokens en cache |
+| `frontend/src-tauri/src/audio/transcription/deepgram_provider.rs` | Proveedor de transcripción con soporte para cloud tokens |
+| `frontend/src-tauri/src/audio/transcription/engine.rs` | Lógica de inicialización del motor de transcripción |
+
+### Configuración Requerida (Supabase)
+
+1. **Secret**: Configurar `DEEPGRAM_API_KEY` en Supabase Dashboard:
+   - Ir a Project Settings → Edge Functions → Secrets
+   - Agregar `DEEPGRAM_API_KEY` con la API key de Deepgram
+
+2. **Edge Function**: Ya desplegada como `deepgram-token` con `verify_jwt: true`
+
+### Requisitos para el Usuario
+
+- Debe estar autenticado con Supabase (login con Google)
+- NO necesita configurar su propia API key de Deepgram
+- Los tokens expiran en 5 minutos (se renuevan automáticamente si es necesario)
+
 ## Referencia de Archivos Clave
 
 **Coordinación Principal**:
@@ -480,7 +537,9 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 **Sistema de Transcripción**:
 - [frontend/src-tauri/src/audio/transcription/engine.rs](frontend/src-tauri/src/audio/transcription/engine.rs) - Gestión de motores de transcripción
 - [frontend/src-tauri/src/audio/transcription/worker.rs](frontend/src-tauri/src/audio/transcription/worker.rs) - Pool de workers de transcripción
-- [frontend/src-tauri/src/audio/transcription/deepgram_provider.rs](frontend/src-tauri/src/audio/transcription/deepgram_provider.rs) - Proveedor Deepgram (nube)
+- [frontend/src-tauri/src/audio/transcription/deepgram_provider.rs](frontend/src-tauri/src/audio/transcription/deepgram_provider.rs) - Proveedor Deepgram (nube, WebSocket streaming)
+- [frontend/src-tauri/src/audio/transcription/deepgram_commands.rs](frontend/src-tauri/src/audio/transcription/deepgram_commands.rs) - Comandos Tauri para gestión de tokens cloud
+- [frontend/src/lib/deepgram.ts](frontend/src/lib/deepgram.ts) - Cliente TypeScript para obtener tokens del cloud proxy
 
 **Componentes UI**:
 - [frontend/src/app/page.tsx](frontend/src/app/page.tsx) - Interfaz principal de grabación

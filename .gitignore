@@ -84,3 +84,4 @@ Cargo.lock
 
 # Windows artifact
 nul
+.claude/settings.local.json

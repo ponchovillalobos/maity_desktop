@@ -392,7 +392,14 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 - **Captura de Audio**: Usa WASAPI (Windows Audio Session API)
 - **GPU**: CUDA (NVIDIA) o Vulkan (AMD/Intel) vía features de Cargo
 - **Herramientas de Build**: Requiere Visual Studio Build Tools 2022 con carga de trabajo C++
-- **LLVM/Clang**: Requerido por `whisper-rs-sys` (bindgen necesita `libclang.dll`). Instalado vía `winget install LLVM.LLVM`
+- **LLVM/Clang**: Requerido por `whisper-rs-sys` (bindgen necesita `libclang.dll`):
+  ```powershell
+  # Instalar LLVM
+  winget install LLVM.LLVM
+
+  # Configurar variable de entorno (PowerShell como admin)
+  [System.Environment]::SetEnvironmentVariable("LIBCLANG_PATH", "C:\Program Files\LLVM\bin", "User")
+  ```
 - **Audio del Sistema**: Usa WASAPI loopback para captura del sistema
 - **FFmpeg**: Requerido para codificar grabaciones (busca en PATH, recursos de la app, o directorio de trabajo)
 

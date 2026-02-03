@@ -35,7 +35,7 @@ export function ThemeSelector() {
           onClick={() => setPalette(p.id)}
           className={`w-full p-4 rounded-lg border transition-all flex items-center gap-4 ${
             palette === p.id
-              ? 'border-[#ff0050] bg-[#ff0050]/10'
+              ? 'border-primary bg-primary/10'
               : 'border-border hover:border-muted-foreground/50 bg-card'
           }`}
         >
@@ -58,7 +58,7 @@ export function ThemeSelector() {
 
           {/* Check */}
           {palette === p.id && (
-            <Check className="w-5 h-5 text-[#ff0050]" />
+            <Check className="w-5 h-5 text-primary" />
           )}
         </button>
       ))}

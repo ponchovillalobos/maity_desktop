@@ -230,18 +230,18 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #d0d0d3;  /* Gris MAITY variación */
+    background: hsl(var(--muted));
     border-radius: 3px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #8a8a8d;  /* Gris MAITY más oscuro */
+    background: hsl(var(--muted-foreground));
   }
 
   /* Firefox scrollbar */
   .custom-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: #d0d0d3 transparent;  /* Gris MAITY */
+    scrollbar-color: hsl(var(--muted)) transparent;
   }
 
   /* BlockNote Editor - Override fixed dimensions for responsive layout */

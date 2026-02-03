@@ -199,8 +199,8 @@ export function PreferenceSettings() {
           </div>
         </div>
 
-        <div className="mt-4 p-3 bg-[#ff0050]/10 rounded-md">
-          <p className="text-xs text-[#ff0050]">
+        <div className="mt-4 p-3 bg-primary/10 rounded-md">
+          <p className="text-xs text-primary">
             <strong>Nota:</strong> La base de datos y los modelos se almacenan juntos en el directorio de datos de tu aplicación para una gestión unificada.
           </p>
         </div>
@@ -219,7 +219,7 @@ export function PreferenceSettings() {
         </p>
         <button
           onClick={signOut}
-          className="flex items-center gap-2 px-4 py-2 text-sm text-[#ff0050] border border-[#ff0050]/50 rounded-md hover:bg-[#ff0050]/10 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-sm text-primary border border-primary/50 rounded-md hover:bg-primary/10 transition-colors"
         >
           <LogOut className="w-4 h-4" />
           Cerrar sesión

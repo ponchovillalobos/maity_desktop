@@ -26,7 +26,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
         onClick={onRecordingToggle}
         disabled={isRecording}
         aria-label={isRecording ? 'Grabación en progreso' : 'Iniciar grabación'}
-        className={`w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-white ${isRecording ? 'bg-[#ff80ad] cursor-not-allowed' : 'bg-[#ff0050] hover:bg-[#cc0040]'} rounded-lg transition-colors shadow-sm`}
+        className={`w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-white ${isRecording ? 'bg-primary/60 cursor-not-allowed' : 'bg-primary hover:bg-primary/80'} rounded-lg transition-colors shadow-sm`}
       >
         {isRecording ? (
           <>
@@ -44,13 +44,13 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
       <button
         onClick={() => router.push('/settings')}
         aria-label="Abrir configuración"
-        className="w-full flex items-center justify-center px-3 py-1.5 mt-1 mb-1 text-sm font-medium text-[#3a3a3c] dark:text-gray-200 bg-[#d0d0d3] dark:bg-gray-700 hover:bg-[#b0b0b3] dark:hover:bg-gray-600 rounded-lg transition-colors shadow-sm"
+        className="w-full flex items-center justify-center px-3 py-1.5 mt-1 mb-1 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 rounded-lg transition-colors shadow-sm"
       >
         <Settings className="w-4 h-4 mr-2" />
         <span>Configuración</span>
       </button>
       <Info isCollapsed={isCollapsed} />
-      <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-[#8a8a8d] dark:text-gray-500">
+      <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-muted-foreground">
         v0.2.0
       </div>
     </div>

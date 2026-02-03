@@ -7,7 +7,6 @@ import { SidebarProvider } from '@/components/Sidebar/SidebarProvider'
 import MainContent from '@/components/MainContent'
 import AnalyticsProvider from '@/components/analytics/AnalyticsProvider'
 import { Toaster, toast } from 'sonner'
-import "sonner/dist/styles.css"
 import { useState, useEffect } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
@@ -38,8 +37,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const [mounted, setMounted] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
+
+  // Hydration guard: wait until client-side mount before rendering content
+  // that depends on browser APIs (localStorage, window, navigator).
+  // SSG renders with mounted=false → placeholder. Client hydrates with
+  // mounted=false → same placeholder (match!). Then useEffect sets mounted=true.
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     // Check onboarding status first
@@ -93,11 +101,9 @@ export default function RootLayout({
   }, [showOnboarding]);
 
   const handleOnboardingComplete = () => {
-    console.log('[Layout] Onboarding completed, reloading app')
+    console.log('[Layout] Onboarding completed, showing main app')
     setShowOnboarding(false)
     setOnboardingCompleted(true)
-    // Optionally reload the window to ensure all state is fresh
-    window.location.reload()
   }
 
   return (
@@ -120,8 +126,10 @@ export default function RootLayout({
                             {/* Meeting detection dialog - listens for meeting-detected events */}
                             <MeetingDetectionDialog />
 
-                            {/* Show onboarding or main app */}
-                            {showOnboarding ? (
+                            {/* Show placeholder until hydration completes, then onboarding or main app */}
+                            {!mounted ? (
+                              <div className="flex flex-col h-screen bg-[#f5f5f6] dark:bg-gray-900" />
+                            ) : showOnboarding ? (
                               <OnboardingFlow onComplete={handleOnboardingComplete} />
                             ) : (
                               <div className="flex flex-col h-screen">

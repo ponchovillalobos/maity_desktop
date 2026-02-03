@@ -25,6 +25,17 @@ import { MeetingDetectionDialog } from '@/components/meeting-detection/MeetingDe
 import { OfflineIndicator } from '@/components/shared/OfflineIndicator'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { LoginScreen } from '@/components/Auth'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+// Create a client outside the component to avoid re-creating it on every render
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: 1,
+    },
+  },
+})
 
 const sourceSans3 = Source_Sans_3({
   subsets: ['latin'],
@@ -181,13 +192,15 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={`${sourceSans3.variable} font-sans antialiased`}>
         <ErrorBoundary>
-          <AnalyticsProvider>
-            <AuthProvider>
-              <AuthGate>
-                <AppContent>{children}</AppContent>
-              </AuthGate>
-            </AuthProvider>
-          </AnalyticsProvider>
+          <QueryClientProvider client={queryClient}>
+            <AnalyticsProvider>
+              <AuthProvider>
+                <AuthGate>
+                  <AppContent>{children}</AppContent>
+                </AuthGate>
+              </AuthProvider>
+            </AnalyticsProvider>
+          </QueryClientProvider>
         </ErrorBoundary>
         <Toaster position="bottom-center" richColors closeButton />
       </body>

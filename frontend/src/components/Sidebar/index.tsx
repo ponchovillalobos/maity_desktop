@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Trophy, MessageSquare } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -445,7 +445,8 @@ const Sidebar: React.FC = () => {
     if (!isCollapsed) return null;
 
     const isHomePage = pathname === '/';
-    const isMeetingPage = pathname?.includes('/meeting-details');
+    const isGamificationPage = pathname === '/gamification';
+    const isConversationsPage = pathname === '/conversations';
     const isSettingsPage = pathname === '/settings';
 
     return (
@@ -466,6 +467,38 @@ const Sidebar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent side="right">
               <p>Inicio</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => router.push('/gamification')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${isGamificationPage ? 'bg-[#e7e7e9] dark:bg-gray-700' : 'hover:bg-[#e7e7e9] dark:hover:bg-gray-700'
+                  }`}
+                aria-label="Gamificación"
+              >
+                <Trophy className="w-5 h-5 text-[#ffd93d]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Gamificación</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => router.push('/conversations')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${isConversationsPage ? 'bg-[#e7e7e9] dark:bg-gray-700' : 'hover:bg-[#e7e7e9] dark:hover:bg-gray-700'
+                  }`}
+                aria-label="Conversaciones"
+              >
+                <MessageSquare className="w-5 h-5 text-[#00f5d4]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Conversaciones</p>
             </TooltipContent>
           </Tooltip>
 
@@ -690,13 +723,29 @@ const Sidebar: React.FC = () => {
           {/* Fixed navigation items */}
           <div className="flex-shrink-0">
             {!isCollapsed && (
-              <div
-                onClick={() => router.push('/')}
-                className="p-3 text-lg font-semibold items-center hover:bg-[#e7e7e9] dark:hover:bg-gray-800 h-10 flex mx-3 mt-3 rounded-lg cursor-pointer dark:text-gray-100"
-              >
-                <Home className="w-4 h-4 mr-2" />
-                <span>Inicio</span>
-              </div>
+              <>
+                <div
+                  onClick={() => router.push('/')}
+                  className={`p-3 text-lg font-semibold items-center hover:bg-[#e7e7e9] dark:hover:bg-gray-800 h-10 flex mx-3 mt-3 rounded-lg cursor-pointer dark:text-gray-100 ${pathname === '/' ? 'bg-[#e7e7e9] dark:bg-gray-700' : ''}`}
+                >
+                  <Home className="w-4 h-4 mr-2" />
+                  <span>Inicio</span>
+                </div>
+                <div
+                  onClick={() => router.push('/gamification')}
+                  className={`p-3 text-lg font-semibold items-center hover:bg-[#e7e7e9] dark:hover:bg-gray-800 h-10 flex mx-3 mt-2 rounded-lg cursor-pointer dark:text-gray-100 ${pathname === '/gamification' ? 'bg-[#e7e7e9] dark:bg-gray-700' : ''}`}
+                >
+                  <Trophy className="w-4 h-4 mr-2 text-[#ffd93d]" />
+                  <span>Gamificación</span>
+                </div>
+                <div
+                  onClick={() => router.push('/conversations')}
+                  className={`p-3 text-lg font-semibold items-center hover:bg-[#e7e7e9] dark:hover:bg-gray-800 h-10 flex mx-3 mt-2 rounded-lg cursor-pointer dark:text-gray-100 ${pathname === '/conversations' ? 'bg-[#e7e7e9] dark:bg-gray-700' : ''}`}
+                >
+                  <MessageSquare className="w-4 h-4 mr-2 text-[#00f5d4]" />
+                  <span>Conversaciones</span>
+                </div>
+              </>
             )}
           </div>
 

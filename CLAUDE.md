@@ -486,6 +486,20 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 - [frontend/src/app/page.tsx](frontend/src/app/page.tsx) - Interfaz principal de grabación
 - [frontend/src/components/Sidebar/SidebarProvider.tsx](frontend/src/components/Sidebar/SidebarProvider.tsx) - Gestión de estado global
 
+**Feature: Gamificación** (Volcán de progreso):
+- [frontend/src/features/gamification/components/GamifiedDashboard.tsx](frontend/src/features/gamification/components/GamifiedDashboard.tsx) - Dashboard principal gamificado
+- [frontend/src/features/gamification/components/MountainMap.tsx](frontend/src/features/gamification/components/MountainMap.tsx) - Visualización SVG del volcán con nodos de progreso
+- [frontend/src/features/gamification/components/MetricsPanel.tsx](frontend/src/features/gamification/components/MetricsPanel.tsx) - Panel de métricas (XP, racha, competencias)
+- [frontend/src/features/gamification/components/InfoPanel.tsx](frontend/src/features/gamification/components/InfoPanel.tsx) - Panel de ranking y muletillas
+- [frontend/src/features/gamification/hooks/useGamifiedDashboardData.ts](frontend/src/features/gamification/hooks/useGamifiedDashboardData.ts) - Hook para cargar datos de conversaciones y calcular nodos
+- [frontend/src/app/gamification/page.tsx](frontend/src/app/gamification/page.tsx) - Página /gamification
+
+**Feature: Conversaciones OMI**:
+- [frontend/src/features/conversations/components/ConversationsList.tsx](frontend/src/features/conversations/components/ConversationsList.tsx) - Lista de conversaciones con Cards clickeables
+- [frontend/src/features/conversations/components/ConversationDetail.tsx](frontend/src/features/conversations/components/ConversationDetail.tsx) - Detalle de conversación (análisis, transcripción)
+- [frontend/src/features/conversations/services/conversations.service.ts](frontend/src/features/conversations/services/conversations.service.ts) - Servicio para CRUD de conversaciones OMI desde Supabase
+- [frontend/src/app/conversations/page.tsx](frontend/src/app/conversations/page.tsx) - Página /conversations
+
 **Integración Whisper**:
 - [frontend/src-tauri/src/whisper_engine/whisper_engine.rs](frontend/src-tauri/src/whisper_engine/whisper_engine.rs) - Gestión de modelos Whisper y transcripción
 

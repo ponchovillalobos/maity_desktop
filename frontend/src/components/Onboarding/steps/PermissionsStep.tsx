@@ -95,8 +95,8 @@ export function PermissionsStep() {
 
   const handleFinish = async () => {
     try {
+      // OnboardingFlow detects completed=true and calls onComplete to hide onboarding
       await completeOnboarding();
-      window.location.reload();
     } catch (error) {
       console.error('Failed to complete onboarding:', error);
     }

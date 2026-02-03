@@ -12,7 +12,7 @@ interface OnboardingFlowProps {
 }
 
 export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
-  const { currentStep } = useOnboarding();
+  const { currentStep, completed } = useOnboarding();
   const [isMac, setIsMac] = React.useState(false);
 
   useEffect(() => {
@@ -30,6 +30,13 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     };
     checkPlatform();
   }, []);
+
+  // When the onboarding context marks completed, notify the layout to hide onboarding
+  useEffect(() => {
+    if (completed) {
+      onComplete();
+    }
+  }, [completed, onComplete]);
 
   // 4-Step Onboarding Flow (System-Recommended Models):
   // Step 1: Welcome - Introduce Maity features

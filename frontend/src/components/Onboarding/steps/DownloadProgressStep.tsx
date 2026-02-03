@@ -47,9 +47,8 @@ export function DownloadProgressStep() {
         goNext();
       } else {
         // Non-macOS: Complete onboarding immediately
+        // OnboardingFlow detects completed=true and calls onComplete to hide onboarding
         await completeOnboarding();
-        await new Promise(resolve => setTimeout(resolve, 100));
-        window.location.reload();
       }
     } catch (error) {
       console.error('Failed to complete setup:', error);

@@ -34,6 +34,7 @@ interface ParakeetProgressInfo {
 
 interface OnboardingContextType {
   currentStep: number;
+  completed: boolean;
   parakeetDownloaded: boolean;
   parakeetProgress: number;
   parakeetProgressInfo: ParakeetProgressInfo;
@@ -514,6 +515,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     <OnboardingContext.Provider
       value={{
         currentStep,
+        completed,
         parakeetDownloaded,
         parakeetProgress,
         parakeetProgressInfo,

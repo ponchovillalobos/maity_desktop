@@ -475,20 +475,22 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 
 ## Deepgram Cloud Proxy (Transcripción en la Nube)
 
-El sistema de transcripción en la nube usa Deepgram como proveedor. **Los usuarios NO configuran su propia API key** - siempre se usa un token temporal obtenido via cloud proxy.
+El sistema de transcripción en la nube usa Deepgram como proveedor. **Los usuarios NO configuran su propia API key** - se usa la API key del proyecto via cloud proxy.
+
+> **Nota**: El endpoint `/v1/auth/grant` de Deepgram para generar tokens temporales requiere un plan de pago. En el plan gratuito, la Edge Function retorna la API key directamente (igual que hace OMI).
 
 ### Arquitectura
 
 ```
-┌─────────────────────┐     ┌──────────────────────────┐     ┌─────────────────┐
-│   App Tauri/Rust    │────>│  Supabase Edge Function  │────>│  Deepgram API   │
-│                     │     │  (deepgram-token)        │     │  /v1/auth/grant │
-│  1. Usuario inicia  │     │                          │     │                 │
-│     grabación       │     │  2. Valida JWT Supabase  │     │  3. Genera JWT  │
-│                     │<────│  4. Retorna token temp   │<────│     temporal    │
-│  5. Conecta a       │     └──────────────────────────┘     └─────────────────┘
-│     Deepgram WS     │─────────────────────────────────────────────────────────>
-│     con token temp  │                                      Deepgram WebSocket
+┌─────────────────────┐     ┌──────────────────────────┐
+│   App Tauri/Rust    │────>│  Supabase Edge Function  │
+│                     │     │  (deepgram-token)        │
+│  1. Usuario inicia  │     │                          │
+│     grabación       │     │  2. Valida JWT Supabase  │
+│                     │<────│  3. Retorna API key      │
+│  4. Conecta a       │     └──────────────────────────┘
+│     Deepgram WS     │─────────────────────────────────>
+│     con API key     │                                 Deepgram WebSocket
 └─────────────────────┘
 ```
 
@@ -500,11 +502,10 @@ El sistema de transcripción en la nube usa Deepgram como proveedor. **Los usuar
    - Esto hace fetch a la Edge Function `deepgram-token` con el JWT de Supabase
 3. **Edge Function** (`supabase/functions/deepgram-token`):
    - Valida el JWT del usuario
-   - Solicita token temporal a Deepgram API (`/v1/auth/grant`, TTL: 5 min)
-   - Retorna el token temporal al frontend
+   - Retorna la API key de Deepgram directamente (no llama a `/v1/auth/grant`)
 4. **Frontend** pasa el token a Rust via `set_deepgram_cloud_token`
 5. **Rust** (`engine.rs`) crea el transcriber con `DeepgramRealtimeTranscriber::with_cloud_token(token)`
-6. **Rust** conecta a Deepgram WebSocket con `Authorization: Bearer {token}`
+6. **Rust** conecta a Deepgram WebSocket con `Authorization: Token {api_key}`
 
 ### Archivos Relevantes
 
@@ -528,7 +529,7 @@ El sistema de transcripción en la nube usa Deepgram como proveedor. **Los usuar
 
 - Debe estar autenticado con Supabase (login con Google)
 - NO necesita configurar su propia API key de Deepgram
-- Los tokens expiran en 5 minutos (se renuevan automáticamente si es necesario)
+- La API key se obtiene del cloud proxy en cada sesión (sin expiración)
 
 ## Referencia de Archivos Clave
 

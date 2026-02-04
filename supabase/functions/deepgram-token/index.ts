@@ -1,6 +1,8 @@
 // Supabase Edge Function: deepgram-token
-// Genera tokens temporales de Deepgram para transcripción en la nube
+// Provee la API key de Deepgram para transcripción en la nube
 // Los usuarios NO configuran su propia API key - siempre se usa el cloud proxy
+// NOTA: El endpoint /v1/auth/grant requiere plan de pago, por lo que retornamos
+// la API key directamente (igual que hace OMI)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -67,49 +69,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Solicitar token temporal a Deepgram
-    // Documentación: https://developers.deepgram.com/reference/get-keys
-    console.log("Requesting temporary token from Deepgram API...");
+    // NOTA: El endpoint /v1/auth/grant para tokens temporales requiere plan de pago.
+    // En el plan gratuito, retornamos la API key directamente (igual que OMI).
+    // El cliente usará esta key para conectarse al WebSocket de Deepgram.
+    console.log("Returning API key directly (free tier - no /v1/auth/grant)");
 
-    const tokenResponse = await fetch("https://api.deepgram.com/v1/auth/grant", {
-      method: "POST",
-      headers: {
-        "Authorization": `Token ${deepgramApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        // TTL de 5 minutos (300 segundos)
-        time_to_live_in_seconds: 300,
-      }),
-    });
-
-    // Diagnóstico mejorado: incluir código de error y mensaje de Deepgram
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error(
-        "Deepgram token generation failed:",
-        "status:", tokenResponse.status,
-        "statusText:", tokenResponse.statusText,
-        "body:", errorText
-      );
-      return new Response(
-        JSON.stringify({
-          error: "Token generation failed",
-          details: `Deepgram API error ${tokenResponse.status}: ${errorText}`,
-          status: tokenResponse.status,
-        }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const tokenData = await tokenResponse.json();
-    console.log("Deepgram token generated successfully, expires in 300s");
-
-    // Retornar el token temporal al cliente
     return new Response(
       JSON.stringify({
-        token: tokenData.key || tokenData.access_token,
-        expires_in: 300,
+        token: deepgramApiKey,
+        expires_in: 86400,  // 24h nominales (la key no expira realmente)
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

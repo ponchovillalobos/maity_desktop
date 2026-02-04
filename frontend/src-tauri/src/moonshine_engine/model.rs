@@ -503,6 +503,24 @@ impl MoonshineModel {
             }
         }
 
+        // Bind outputs BEFORE run_binding() - IoBinding requires explicit output binding
+        // Get the default allocator's memory info for output binding
+        let allocator = ort::memory::Allocator::default();
+        let memory_info = allocator.memory_info();
+
+        // Bind logits output
+        binding.bind_output_to_device("logits", &memory_info)?;
+
+        // Bind all 32 present.* cache outputs
+        for layer in 0..DECODER_NUM_LAYERS {
+            for module in ["decoder", "encoder"] {
+                for kv in ["key", "value"] {
+                    let present_name = format!("present.{}.{}.{}", layer, module, kv);
+                    binding.bind_output_to_device(&present_name, &memory_info)?;
+                }
+            }
+        }
+
         // Run the decoder with the binding
         let outputs = self.decoder.run_binding(&binding)?;
 

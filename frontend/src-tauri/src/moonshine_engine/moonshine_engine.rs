@@ -172,9 +172,11 @@ impl MoonshineEngine {
                 ModelStatus::Downloading { progress: 0 }
             } else if model_path.exists() {
                 // Check for required ONNX files
+                // Using separate decoder models instead of merged to avoid MatMul errors
                 let required_files = vec![
                     "encoder_model.onnx",
-                    "decoder_model_merged.onnx",
+                    "decoder_model.onnx",
+                    "decoder_with_past_model.onnx",
                     "tokenizer.json",
                 ];
 
@@ -243,16 +245,20 @@ impl MoonshineEngine {
         if !model_dir.join("encoder_model.onnx").exists() {
             return Err(anyhow!("encoder_model.onnx not found"));
         }
-        if !model_dir.join("decoder_model_merged.onnx").exists() {
-            return Err(anyhow!("decoder_model_merged.onnx not found"));
+        if !model_dir.join("decoder_model.onnx").exists() {
+            return Err(anyhow!("decoder_model.onnx not found"));
+        }
+        if !model_dir.join("decoder_with_past_model.onnx").exists() {
+            return Err(anyhow!("decoder_with_past_model.onnx not found"));
         }
 
         // Define minimum file sizes (80% of expected to allow some variance)
-        // moonshine-base ONNX files: encoder ~81MB, decoder ~166MB, tokenizer ~4KB
+        // moonshine-base ONNX files: encoder ~81MB, decoder ~158MB, decoder_with_past ~147MB, tokenizer ~4KB
         let expected_sizes: Vec<(&str, u64)> = vec![
-            ("encoder_model.onnx", 65_000_000),       // ~81 MB, min 65 MB
-            ("decoder_model_merged.onnx", 130_000_000), // ~166 MB, min 130 MB
-            ("tokenizer.json", 1_000),                 // ~4 KB, min 1 KB
+            ("encoder_model.onnx", 65_000_000),           // ~81 MB, min 65 MB
+            ("decoder_model.onnx", 130_000_000),          // ~158 MB, min 130 MB
+            ("decoder_with_past_model.onnx", 120_000_000), // ~147 MB, min 120 MB
+            ("tokenizer.json", 1_000),                     // ~4 KB, min 1 KB
         ];
 
         // Validate each file exists AND has sufficient size
@@ -550,9 +556,11 @@ impl MoonshineEngine {
         let base_url = "https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main/onnx";
 
         // Files to download
+        // Using separate decoder models instead of merged to avoid MatMul errors
         let files_to_download = vec![
             "encoder_model.onnx",
-            "decoder_model_merged.onnx",
+            "decoder_model.onnx",
+            "decoder_with_past_model.onnx",
         ];
         // tokenizer.json is at a different path
         let tokenizer_url = "https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main/tokenizer.json";
@@ -584,10 +592,11 @@ impl MoonshineEngine {
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
 
         // Approximate file sizes for progress calculation
-        // moonshine-base ONNX files: encoder ~81MB, decoder ~166MB, tokenizer ~4KB
+        // moonshine-base ONNX files: encoder ~81MB, decoder ~158MB, decoder_with_past ~147MB, tokenizer ~4KB
         let file_sizes: std::collections::HashMap<&str, u64> = [
             ("encoder_model.onnx", 81_000_000u64),
-            ("decoder_model_merged.onnx", 166_000_000u64),
+            ("decoder_model.onnx", 158_000_000u64),
+            ("decoder_with_past_model.onnx", 147_000_000u64),
             ("tokenizer.json", 4_000u64),
         ].iter().cloned().collect();
 

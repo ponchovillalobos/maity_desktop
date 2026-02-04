@@ -1,4 +1,4 @@
-use ndarray::{Array2, Array4, ArrayD};
+use ndarray::{Array2, ArrayD};
 use ort::execution_providers::CPUExecutionProvider;
 use ort::inputs;
 use ort::session::builder::GraphOptimizationLevel;
@@ -8,22 +8,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-/// Output from a single decoder step
-struct DecoderStepOutput {
-    /// Logits tensor for next token prediction
-    logits: ArrayD<f32>,
-    /// Updated past_key_values for next step
-    new_cache: HashMap<String, ArrayD<f32>>,
-}
-
 const MAX_TOKENS: usize = 1024;
 const EOS_TOKEN_ID: i64 = 2; // End of sequence token
 const BOS_TOKEN_ID: i64 = 1; // Beginning of sequence token
 
 // Moonshine-base decoder configuration (from config.json)
 const DECODER_NUM_LAYERS: usize = 8;
-const NUM_KEY_VALUE_HEADS: usize = 8;
-const HEAD_DIM: usize = 52; // 416 / 8 = 52 (hidden_size / num_key_value_heads)
 
 #[derive(thiserror::Error, Debug)]
 pub enum MoonshineError {
@@ -151,7 +141,10 @@ impl SimpleTokenizer {
 
 pub struct MoonshineModel {
     encoder: Session,
-    decoder: Session,
+    /// Decoder for the first step (without KV cache)
+    decoder_first: Session,
+    /// Decoder for subsequent steps (with KV cache)
+    decoder_with_past: Session,
     tokenizer: SimpleTokenizer,
 }
 
@@ -164,7 +157,11 @@ impl Drop for MoonshineModel {
 impl MoonshineModel {
     pub fn new<P: AsRef<Path>>(model_dir: P) -> Result<Self, MoonshineError> {
         let encoder = Self::init_session(&model_dir, "encoder_model")?;
-        let decoder = Self::init_session(&model_dir, "decoder_model_merged")?;
+        // Using separate decoder models instead of merged to avoid MatMul errors
+        // decoder_model.onnx: for the first step (no past_key_values input)
+        // decoder_with_past_model.onnx: for subsequent steps (with past_key_values input)
+        let decoder_first = Self::init_session(&model_dir, "decoder_model")?;
+        let decoder_with_past = Self::init_session(&model_dir, "decoder_with_past_model")?;
         let tokenizer = Self::load_tokenizer(&model_dir)?;
 
         log::info!(
@@ -174,7 +171,8 @@ impl MoonshineModel {
 
         Ok(Self {
             encoder,
-            decoder,
+            decoder_first,
+            decoder_with_past,
             tokenizer,
         })
     }
@@ -277,12 +275,25 @@ impl MoonshineModel {
                     input_names.len(), input_names
                 );
             }
-        } else if model_name == "decoder_model_merged" {
+        } else if model_name == "decoder_model" {
+            // First-step decoder: no past_key_values inputs required
             let expected_decoder_inputs = ["input_ids", "encoder_hidden_states"];
             for expected in expected_decoder_inputs {
                 if !input_names.contains(&expected) {
                     log::warn!(
-                        "⚠️ Decoder model missing expected input '{}'. Available inputs: {:?}. \
+                        "⚠️ Decoder (first step) model missing expected input '{}'. Available inputs: {:?}. \
+                        This may cause transcription to fail.",
+                        expected, input_names
+                    );
+                }
+            }
+        } else if model_name == "decoder_with_past_model" {
+            // Subsequent decoder: requires past_key_values inputs
+            let expected_decoder_inputs = ["input_ids", "encoder_hidden_states"];
+            for expected in expected_decoder_inputs {
+                if !input_names.contains(&expected) {
+                    log::warn!(
+                        "⚠️ Decoder (with past) model missing expected input '{}'. Available inputs: {:?}. \
                         This may cause transcription to fail.",
                         expected, input_names
                     );
@@ -371,12 +382,13 @@ impl MoonshineModel {
         Ok(hidden_states)
     }
 
-    /// Decode hidden states to text tokens using the merged decoder model.
+    /// Decode hidden states to text tokens using separate decoder models.
     ///
-    /// The merged decoder model combines initial decoding (without cache) and
-    /// cached decoding (with KV cache) into a single model. It requires:
-    /// - `use_cache_branch`: Boolean to select which branch to use
-    /// - `past_key_values.*`: 32 cache tensors (8 layers × 2 modules × 2 key/value)
+    /// Uses two models instead of the merged decoder to avoid MatMul errors:
+    /// - decoder_model.onnx: for the first step (without KV cache input)
+    /// - decoder_with_past_model.onnx: for subsequent steps (with KV cache input)
+    ///
+    /// This is the approach recommended by HuggingFace for encoder-decoder models.
     fn decode(&mut self, encoder_output: &ArrayD<f32>) -> Result<Vec<i64>, MoonshineError> {
         log::info!(
             "Running Moonshine decoder with encoder_output shape: {:?}",
@@ -386,88 +398,36 @@ impl MoonshineModel {
         let mut tokens: Vec<i64> = vec![BOS_TOKEN_ID];
         let batch_size = 1;
 
-        // Get encoder sequence length for cross-attention cache initialization
-        let encoder_seq_len = encoder_output.shape()[1];
-
-        // Initialize past_key_values for all layers
-        // Shape: [batch, num_heads, seq_len, head_dim]
-        //
-        // IMPORTANT: The "decoder" module (self-attention) starts with empty cache (seq_len=0)
-        // because it grows as we generate tokens. But the "encoder" module (cross-attention)
-        // must have seq_len matching the encoder output length, because the K/V projections
-        // are computed from encoder_hidden_states which has that sequence length.
-        //
-        // Without this fix, the cross-attention MatMul fails with:
-        // "right operand cannot broadcast on dim 0" because Query=[1,8,1,52] but Key=[1,8,0,52]
-        let mut past_key_values: HashMap<String, ArrayD<f32>> = HashMap::new();
-        for layer in 0..DECODER_NUM_LAYERS {
-            // DECODER self-attention cache: starts empty, grows with generated tokens
-            for kv in ["key", "value"] {
-                let name = format!("past_key_values.{}.decoder.{}", layer, kv);
-                let empty_cache = Array4::<f32>::zeros((
-                    batch_size,
-                    NUM_KEY_VALUE_HEADS,
-                    0, // Empty sequence initially - grows as we decode
-                    HEAD_DIM,
-                ))
-                .into_dyn();
-                past_key_values.insert(name, empty_cache);
-            }
-
-            // ENCODER cross-attention cache: must match encoder output sequence length
-            // The merged ONNX model will compute the K/V projections from encoder_hidden_states
-            // on the first step (use_cache_branch=false), but needs correctly shaped tensors
-            for kv in ["key", "value"] {
-                let name = format!("past_key_values.{}.encoder.{}", layer, kv);
-                let encoder_cache = Array4::<f32>::zeros((
-                    batch_size,
-                    NUM_KEY_VALUE_HEADS,
-                    encoder_seq_len, // Must match encoder output length, NOT 0
-                    HEAD_DIM,
-                ))
-                .into_dyn();
-                past_key_values.insert(name, encoder_cache);
-            }
-        }
-
-        log::debug!(
-            "Initialized {} past_key_values tensors: decoder=[1,{},0,{}], encoder=[1,{},{},{}]",
-            past_key_values.len(),
-            NUM_KEY_VALUE_HEADS,
-            HEAD_DIM,
-            NUM_KEY_VALUE_HEADS,
-            encoder_seq_len,
-            HEAD_DIM
-        );
+        // Cache will be populated after the first step
+        let mut past_key_values: Option<HashMap<String, ArrayD<f32>>> = None;
 
         for step in 0..MAX_TOKENS {
-            let use_cache_branch = step > 0;
+            // For first step: use full input_ids and decoder_first model (no cache input)
+            // For subsequent steps: use only the last token and decoder_with_past model (with cache)
+            let (logits, new_cache) = if step == 0 {
+                // First step: use decoder_first (decoder_model.onnx)
+                let input_ids_data = tokens.clone();
+                let token_seq_len = input_ids_data.len();
+                let input_ids =
+                    Array2::from_shape_vec((batch_size, token_seq_len), input_ids_data)?.into_dyn();
 
-            // For first step: use full input_ids
-            // For subsequent steps: use only the last token (previous tokens are in cache)
-            let input_ids_data: Vec<i64> = if use_cache_branch {
-                vec![*tokens.last().unwrap()]
+                self.run_decoder_first_step(&input_ids, encoder_output)?
             } else {
-                tokens.clone()
+                // Subsequent steps: use decoder_with_past (decoder_with_past_model.onnx)
+                let input_ids_data = vec![*tokens.last().unwrap()];
+                let input_ids =
+                    Array2::from_shape_vec((batch_size, 1), input_ids_data)?.into_dyn();
+
+                let cache = past_key_values.as_ref().ok_or_else(|| {
+                    MoonshineError::InputNotFound("past_key_values not available".to_string())
+                })?;
+
+                self.run_decoder_with_past(&input_ids, encoder_output, cache, step)?
             };
 
-            let token_seq_len = input_ids_data.len();
-            let input_ids =
-                Array2::from_shape_vec((batch_size, token_seq_len), input_ids_data)?.into_dyn();
+            // Update cache for next step
+            past_key_values = Some(new_cache);
 
-            // Build inputs dynamically to handle all 35 inputs required by the merged decoder
-            let step_output = self.run_decoder_with_cache(
-                &input_ids,
-                encoder_output,
-                use_cache_branch,
-                &past_key_values,
-                step,
-            )?;
-
-            // Update past_key_values with new cache values
-            past_key_values = step_output.new_cache;
-
-            let logits = step_output.logits;
             log::trace!("Decoder step {} logits shape: {:?}", step, logits.shape());
 
             // Get vocabulary size from logits shape
@@ -517,41 +477,83 @@ impl MoonshineModel {
         Ok(tokens)
     }
 
-    /// Run the decoder with cache support using dynamic inputs.
-    /// Avoids IoBinding to prevent pointer alignment issues with ndarray.
-    /// When ORT allocates memory internally via bind_output_to_device(), that memory
-    /// may not be aligned properly for ndarray, causing panics in try_extract_array().
-    /// Using Session::run() with explicit inputs avoids this issue.
-    fn run_decoder_with_cache(
+    /// Run the first decoder step using decoder_model.onnx (without past_key_values input).
+    /// Returns logits and the initial KV cache from present.* outputs.
+    fn run_decoder_first_step(
         &mut self,
         input_ids: &ArrayD<i64>,
         encoder_output: &ArrayD<f32>,
-        use_cache_branch: bool,
-        past_key_values: &HashMap<String, ArrayD<f32>>,
-        step: usize,
-    ) -> Result<DecoderStepOutput, MoonshineError> {
-        log::trace!(
-            "Running decoder step {} with use_cache_branch={}",
-            step,
-            use_cache_branch
-        );
+    ) -> Result<(ArrayD<f32>, HashMap<String, ArrayD<f32>>), MoonshineError> {
+        log::trace!("Running decoder first step (no cache input)");
 
-        // Build inputs as a Vec of (name, DynValue) tuples for Session::run()
-        // Using Tensor::from_array() which creates properly owned tensors
-        let mut inputs: Vec<(String, DynValue)> = Vec::with_capacity(35);
+        // Build inputs: only input_ids and encoder_hidden_states (no past_key_values)
+        let mut inputs: Vec<(String, DynValue)> = Vec::with_capacity(2);
 
-        // Main inputs - convert ArrayD to owned Tensor
         let input_ids_tensor = Tensor::from_array(input_ids.clone())?.into_dyn();
         inputs.push(("input_ids".to_string(), input_ids_tensor));
 
         let encoder_tensor = Tensor::from_array(encoder_output.clone())?.into_dyn();
         inputs.push(("encoder_hidden_states".to_string(), encoder_tensor));
 
-        // use_cache_branch must be rank 1 (shape [1]), not rank 0 (scalar)
-        // The ONNX model expects: "Invalid rank for input: use_cache_branch Got: 0 Expected: 1"
-        let use_cache_array = ndarray::Array1::from_vec(vec![use_cache_branch]);
-        let use_cache_tensor = Tensor::from_array(use_cache_array)?.into_dyn();
-        inputs.push(("use_cache_branch".to_string(), use_cache_tensor));
+        // Run the first decoder
+        let outputs = self.decoder_first.run(inputs)?;
+
+        // Extract logits
+        let logits = if let Some(v) = outputs.get("logits") {
+            Self::extract_to_aligned_array(v)?
+        } else {
+            let first_output = outputs
+                .values()
+                .next()
+                .ok_or_else(|| MoonshineError::OutputNotFound("logits".to_string()))?;
+            Self::extract_to_aligned_array(&first_output)?
+        };
+
+        // Extract cache values from present.* outputs
+        let mut new_cache: HashMap<String, ArrayD<f32>> = HashMap::new();
+        for layer in 0..DECODER_NUM_LAYERS {
+            for module in ["decoder", "encoder"] {
+                for kv in ["key", "value"] {
+                    let present_name = format!("present.{}.{}.{}", layer, module, kv);
+                    let cache_name = format!("past_key_values.{}.{}.{}", layer, module, kv);
+
+                    if let Some(present) = outputs.get(&present_name) {
+                        let present_array = Self::extract_to_aligned_array(present)?;
+                        new_cache.insert(cache_name, present_array);
+                    } else {
+                        log::warn!("First step decoder missing output: {}", present_name);
+                    }
+                }
+            }
+        }
+
+        log::debug!(
+            "First step: extracted {} cache tensors from decoder outputs",
+            new_cache.len()
+        );
+
+        Ok((logits, new_cache))
+    }
+
+    /// Run subsequent decoder steps using decoder_with_past_model.onnx (with past_key_values input).
+    /// Returns logits and the updated KV cache.
+    fn run_decoder_with_past(
+        &mut self,
+        input_ids: &ArrayD<i64>,
+        encoder_output: &ArrayD<f32>,
+        past_key_values: &HashMap<String, ArrayD<f32>>,
+        step: usize,
+    ) -> Result<(ArrayD<f32>, HashMap<String, ArrayD<f32>>), MoonshineError> {
+        log::trace!("Running decoder step {} with cache", step);
+
+        // Build inputs: input_ids, encoder_hidden_states, and all 32 past_key_values
+        let mut inputs: Vec<(String, DynValue)> = Vec::with_capacity(34);
+
+        let input_ids_tensor = Tensor::from_array(input_ids.clone())?.into_dyn();
+        inputs.push(("input_ids".to_string(), input_ids_tensor));
+
+        let encoder_tensor = Tensor::from_array(encoder_output.clone())?.into_dyn();
+        inputs.push(("encoder_hidden_states".to_string(), encoder_tensor));
 
         // Add all 32 past_key_values (8 layers × 2 modules × 2 kv)
         for layer in 0..DECODER_NUM_LAYERS {
@@ -567,15 +569,13 @@ impl MoonshineModel {
             }
         }
 
-        // Run the decoder with dynamic inputs
-        let outputs = self.decoder.run(inputs)?;
+        // Run the decoder with past
+        let outputs = self.decoder_with_past.run(inputs)?;
 
-        // Extract logits using extract_to_aligned_array() to avoid alignment panics.
-        // ORT memory may not be aligned properly for ndarray's ArrayViewD requirements.
+        // Extract logits
         let logits = if let Some(v) = outputs.get("logits") {
             Self::extract_to_aligned_array(v)?
         } else {
-            // Fallback to first output
             let first_output = outputs
                 .values()
                 .next()
@@ -584,7 +584,6 @@ impl MoonshineModel {
         };
 
         // Extract new cache values from present.* outputs
-        // Use extract_to_aligned_array() to avoid alignment panics with ORT memory
         let mut new_cache: HashMap<String, ArrayD<f32>> = HashMap::new();
         for layer in 0..DECODER_NUM_LAYERS {
             for module in ["decoder", "encoder"] {
@@ -605,7 +604,7 @@ impl MoonshineModel {
             }
         }
 
-        Ok(DecoderStepOutput { logits, new_cache })
+        Ok((logits, new_cache))
     }
 
     /// Decode token IDs to text

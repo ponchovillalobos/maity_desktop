@@ -592,6 +592,17 @@ La configuración de modelo e idioma se guarda en la tabla `transcript_settings`
 **Integración Whisper**:
 - [frontend/src-tauri/src/whisper_engine/whisper_engine.rs](frontend/src-tauri/src/whisper_engine/whisper_engine.rs) - Gestión de modelos Whisper y transcripción
 
+**Motor Moonshine** (transcripción ultra-rápida alternativa):
+- [frontend/src-tauri/src/moonshine_engine/moonshine_engine.rs](frontend/src-tauri/src/moonshine_engine/moonshine_engine.rs) - Gestión de modelos Moonshine y descarga
+- [frontend/src-tauri/src/moonshine_engine/model.rs](frontend/src-tauri/src/moonshine_engine/model.rs) - Implementación del modelo ONNX con encoder + decoder separados
+
+**Arquitectura Moonshine**:
+Moonshine usa dos modelos de decoder separados en lugar de un modelo merged para evitar errores de MatMul en cross-attention:
+- `decoder_model.onnx` (~158 MB) - Para el primer paso de decodificación (sin KV cache)
+- `decoder_with_past_model.onnx` (~147 MB) - Para pasos subsecuentes (con KV cache)
+
+Este enfoque es el recomendado por HuggingFace para modelos encoder-decoder ONNX.
+
 **Scripts de Evaluación**:
 - [scripts/test_moonshine_spanish.py](scripts/test_moonshine_spanish.py) - Script para probar Moonshine base-es en español
 - [scripts/generate_test_audio.py](scripts/generate_test_audio.py) - Grabador de audios de prueba para evaluación

@@ -1,0 +1,5 @@
+# Supabase project configuration
+# Project: Maity Desktop
+
+[api]
+enabled = true

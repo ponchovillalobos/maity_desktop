@@ -58,6 +58,10 @@ export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
   }
 
   console.log('[deepgram] Requesting new token from edge function...')
+  console.log('[deepgram] URL:', `${SUPABASE_URL}/functions/v1/deepgram-token`)
+  console.log('[deepgram] User ID:', session.user?.id)
+  console.log('[deepgram] Token present:', !!session.access_token)
+  console.log('[deepgram] Token length:', session.access_token?.length || 0)
 
   // Call the edge function
   const response = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-token`, {
@@ -68,14 +72,28 @@ export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
     },
   })
 
+  console.log('[deepgram] Response status:', response.status, response.statusText)
+
   if (!response.ok) {
     let errorMessage = 'Failed to get Deepgram token'
     try {
-      const errorData: DeepgramTokenError = await response.json()
-      errorMessage = errorData.details || errorData.error || errorMessage
-      console.error('[deepgram] Token request failed:', errorData)
-    } catch {
-      console.error('[deepgram] Token request failed with status:', response.status)
+      // Read raw text first to see the full response
+      const responseText = await response.text()
+      console.error('[deepgram] Raw error response:', responseText)
+
+      // Try to parse as JSON
+      try {
+        const errorData: DeepgramTokenError = JSON.parse(responseText)
+        errorMessage = errorData.details || errorData.error || errorMessage
+        console.error('[deepgram] Parsed error data:', errorData)
+      } catch {
+        // Response wasn't JSON, use raw text
+        errorMessage = responseText || `HTTP ${response.status}: ${response.statusText}`
+        console.error('[deepgram] Response was not JSON')
+      }
+    } catch (readError) {
+      console.error('[deepgram] Failed to read error response:', readError)
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`
     }
     throw new Error(errorMessage)
   }

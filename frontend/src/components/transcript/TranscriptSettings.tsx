@@ -90,7 +90,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
         groq: ['llama-3.3-70b-versatile'],
         openai: ['gpt-4o'],
     };
-    const requiresApiKey = transcriptModelConfig.provider === 'deepgram' || transcriptModelConfig.provider === 'elevenLabs' || transcriptModelConfig.provider === 'openai' || transcriptModelConfig.provider === 'groq';
+    const requiresApiKey = transcriptModelConfig.provider === 'elevenLabs' || transcriptModelConfig.provider === 'openai' || transcriptModelConfig.provider === 'groq';
 
     const handleInputClick = () => {
         if (isApiKeyLocked) {
@@ -195,6 +195,11 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                             )}
 
                         </div>
+                        {transcriptModelConfig.provider === 'deepgram' && (
+                            <p className="text-xs text-[#6a6a6d] dark:text-gray-400 mt-2 mx-1">
+                                Deepgram usa autenticacion automatica. Solo necesitas iniciar sesion con Google.
+                            </p>
+                        )}
                     </div>
 
                     {transcriptModelConfig.provider === 'localWhisper' && (

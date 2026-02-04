@@ -68,6 +68,8 @@ export function useRecordingStart(
           // For Deepgram (cloud), get a temporary token from the cloud proxy
           // This requires the user to be authenticated with Supabase
           try {
+            console.log('[recording] Deepgram: checking auth status and token...');
+
             // Check if we already have a valid cached token
             if (hasValidCachedToken()) {
               console.log('✅ Deepgram cloud token already cached, ready to record');
@@ -85,6 +87,11 @@ export function useRecordingStart(
             return { ready: true, isDownloading: false };
           } catch (error) {
             console.error('❌ Failed to get Deepgram cloud token:', error);
+            console.error('[recording] Deepgram token error details:', {
+              message: error instanceof Error ? error.message : String(error),
+              name: error instanceof Error ? error.name : undefined,
+              stack: error instanceof Error ? error.stack : undefined
+            });
             const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
 
             // Check if the error is authentication-related

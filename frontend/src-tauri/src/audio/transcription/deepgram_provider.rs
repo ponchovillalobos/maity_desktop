@@ -167,13 +167,10 @@ impl DeepgramRealtimeTranscriber {
     /// Get the authorization header format based on token type
     fn get_auth_header(&self) -> Option<String> {
         self.get_auth_token().map(|token| {
-            if self.config.use_cloud_proxy {
-                // Cloud proxy tokens use Bearer format (JWT from Deepgram /v1/auth/grant)
-                format!("Bearer {}", token)
-            } else {
-                // User's own API key uses Token format
-                format!("Token {}", token)
-            }
+            // Both cloud proxy and user API keys use "Token" format
+            // Note: Cloud proxy now returns the API key directly (not JWT)
+            // because /v1/auth/grant requires a paid Deepgram plan
+            format!("Token {}", token)
         })
     }
 

@@ -119,7 +119,7 @@ interface LanguageSelectionProps {
   selectedLanguage: string;
   onLanguageChange: (language: string) => void;
   disabled?: boolean;
-  provider?: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+  provider?: 'localWhisper' | 'parakeet' | 'moonshine' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
 }
 
 export function LanguageSelection({
@@ -131,9 +131,13 @@ export function LanguageSelection({
   const [saving, setSaving] = useState(false);
 
   // Parakeet only supports auto-detection (doesn't support manual language selection)
+  // Moonshine base only supports English
   const isParakeet = provider === 'parakeet';
+  const isMoonshine = provider === 'moonshine';
   const availableLanguages = isParakeet
     ? LANGUAGES.filter(lang => lang.code === 'auto' || lang.code === 'auto-translate')
+    : isMoonshine
+    ? LANGUAGES.filter(lang => lang.code === 'en')
     : LANGUAGES;
 
   const handleLanguageChange = async (languageCode: string) => {
@@ -202,6 +206,14 @@ export function LanguageSelection({
           <div className="p-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded text-amber-800 dark:text-amber-300">
             <p className="font-medium">ℹ️ Soporte de Idiomas de Parakeet</p>
             <p className="mt-1 text-xs">Parakeet actualmente solo soporta detección automática de idioma. La selección manual de idioma no está disponible. Usa Whisper si necesitas especificar un idioma particular.</p>
+          </div>
+        )}
+
+        {/* Aviso de limitación de idioma de Moonshine */}
+        {isMoonshine && (
+          <div className="p-2 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded text-purple-800 dark:text-purple-300">
+            <p className="font-medium">🌙 Soporte de Idiomas de Moonshine</p>
+            <p className="mt-1 text-xs">El modelo Moonshine base está optimizado exclusivamente para inglés. Para español u otros idiomas, usa Whisper o Deepgram.</p>
           </div>
         )}
 

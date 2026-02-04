@@ -61,7 +61,7 @@ export interface ProcessingProgress {
 }
 
 export interface TranscriptModelProps {
-  provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+  provider: 'localWhisper' | 'parakeet' | 'moonshine' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
   model: string;
   apiKey?: string | null;
 }

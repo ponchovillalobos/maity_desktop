@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Eye, EyeOff, Lock, Unlock, Save, Loader2, CheckCircle } from 'lucide-react';
 import { ModelManager } from '@/components/models/WhisperModelManager';
 import { ParakeetModelManager } from '@/components/models/ParakeetModelManager';
+import { MoonshineModelManager } from '@/components/models/MoonshineModelManager';
 import { toast } from 'sonner';
 import type { TranscriptModelProps } from '@/types/transcript';
 
@@ -25,6 +26,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
     const [selectedWhisperModel, setSelectedWhisperModel] = useState<string>(transcriptModelConfig.provider === 'localWhisper' ? transcriptModelConfig.model : 'small');
     const [selectedParakeetModel, setSelectedParakeetModel] = useState<string>(transcriptModelConfig.provider === 'parakeet' ? transcriptModelConfig.model : 'parakeet-tdt-0.6b-v3-int8');
+    const [selectedMoonshineModel, setSelectedMoonshineModel] = useState<string>(transcriptModelConfig.provider === 'moonshine' ? transcriptModelConfig.model : 'moonshine-base');
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
@@ -63,7 +65,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     };
 
     useEffect(() => {
-        if (transcriptModelConfig.provider === 'localWhisper' || transcriptModelConfig.provider === 'parakeet') {
+        if (transcriptModelConfig.provider === 'localWhisper' || transcriptModelConfig.provider === 'parakeet' || transcriptModelConfig.provider === 'moonshine') {
             setApiKey(null);
         }
     }, [transcriptModelConfig.provider]);
@@ -82,6 +84,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const modelOptions = {
         localWhisper: [selectedWhisperModel],
         parakeet: [selectedParakeetModel],
+        moonshine: [selectedMoonshineModel],
         deepgram: ['nova-2', 'nova-2-phonecall', 'nova-2-meeting'],
         elevenLabs: ['eleven_multilingual_v2'],
         groq: ['llama-3.3-70b-versatile'],
@@ -124,6 +127,20 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
         }
     };
 
+    const handleMoonshineModelSelect = (modelName: string) => {
+        setSelectedMoonshineModel(modelName);
+        if (transcriptModelConfig.provider === 'moonshine') {
+            setTranscriptModelConfig({
+                ...transcriptModelConfig,
+                model: modelName
+            });
+            // Close modal after selection
+            if (onModelSelect) {
+                onModelSelect();
+            }
+        }
+    };
+
     return (
         <div>
             <div>
@@ -153,11 +170,12 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <SelectContent>
                                     <SelectItem value="deepgram">☁️ Deepgram (Recomendado - Nube)</SelectItem>
                                     <SelectItem value="parakeet">⚡ Parakeet (Local - Tiempo Real)</SelectItem>
+                                    <SelectItem value="moonshine">🌙 Moonshine (Local - Ultra Rápido)</SelectItem>
                                     <SelectItem value="localWhisper">🏠 Whisper Local (Alta Precisión)</SelectItem>
                                 </SelectContent>
                             </Select>
 
-                            {transcriptModelConfig.provider !== 'localWhisper' && transcriptModelConfig.provider !== 'parakeet' && (
+                            {transcriptModelConfig.provider !== 'localWhisper' && transcriptModelConfig.provider !== 'parakeet' && transcriptModelConfig.provider !== 'moonshine' && (
                                 <Select
                                     value={transcriptModelConfig.model}
                                     onValueChange={(value) => {
@@ -194,6 +212,16 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                             <ParakeetModelManager
                                 selectedModel={selectedParakeetModel}
                                 onModelSelect={handleParakeetModelSelect}
+                                autoSave={true}
+                            />
+                        </div>
+                    )}
+
+                    {transcriptModelConfig.provider === 'moonshine' && (
+                        <div className="mt-6">
+                            <MoonshineModelManager
+                                selectedModel={selectedMoonshineModel}
+                                onModelSelect={handleMoonshineModelSelect}
                                 autoSave={true}
                             />
                         </div>

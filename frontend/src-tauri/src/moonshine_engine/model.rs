@@ -3,7 +3,7 @@ use ort::execution_providers::CPUExecutionProvider;
 use ort::inputs;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
-use ort::value::{Tensor, TensorRef};
+use ort::value::{DynValue, Tensor, TensorRef};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -179,6 +179,27 @@ impl MoonshineModel {
         })
     }
 
+    /// Extract tensor data to a properly aligned ArrayD.
+    ///
+    /// Uses `try_extract_tensor()` which returns raw `(&Shape, &[T])` instead of
+    /// `try_extract_array()` which creates an `ArrayViewD` directly over ORT memory.
+    /// ORT may return memory that is not aligned according to ndarray's requirements
+    /// (typically 8 or 16 bytes), causing panics in `ndarray-0.16.1\src\impl_raw_views.rs:100`.
+    ///
+    /// By copying the data into a new Vec, we guarantee proper alignment.
+    fn extract_to_aligned_array(value: &DynValue) -> Result<ArrayD<f32>, MoonshineError> {
+        let (shape, data) = value.try_extract_tensor::<f32>()?;
+
+        // Convert ORT Shape (Vec<i64>) to ndarray IxDyn (Vec<usize>)
+        let shape_vec: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
+        let ix_dyn = ndarray::IxDyn(&shape_vec);
+
+        // Create a new array by copying data - this guarantees proper alignment
+        let array = ArrayD::from_shape_vec(ix_dyn, data.to_vec())?;
+
+        Ok(array)
+    }
+
     fn init_session<P: AsRef<Path>>(
         model_dir: P,
         model_name: &str,
@@ -309,15 +330,16 @@ impl MoonshineModel {
 
         // Get encoder output (hidden states)
         // Try different output names that Moonshine models might use
+        // Use extract_to_aligned_array() to avoid alignment panics with ORT memory
         let hidden_states = if let Some(v) = outputs.get("last_hidden_state") {
-            v.try_extract_array()?.to_owned()
+            Self::extract_to_aligned_array(v)?
         } else if let Some(v) = outputs.get("hidden_states") {
-            v.try_extract_array()?.to_owned()
+            Self::extract_to_aligned_array(v)?
         } else {
             // Fallback to first output
             let first_output = outputs.values().next()
                 .ok_or_else(|| MoonshineError::OutputNotFound("hidden_states".to_string()))?;
-            first_output.try_extract_array()?.to_owned()
+            Self::extract_to_aligned_array(&first_output)?
         };
 
         log::trace!("Encoder output shape: {:?}", hidden_states.shape());
@@ -444,9 +466,11 @@ impl MoonshineModel {
         Ok(tokens)
     }
 
-    /// Run the decoder with cache support using IoBinding.
-    /// IoBinding is ideal for models with many inputs (35 in this case).
-    /// Returns extracted logits and new cache values to avoid lifetime issues.
+    /// Run the decoder with cache support using dynamic inputs.
+    /// Avoids IoBinding to prevent pointer alignment issues with ndarray.
+    /// When ORT allocates memory internally via bind_output_to_device(), that memory
+    /// may not be aligned properly for ndarray, causing panics in try_extract_array().
+    /// Using Session::run() with explicit inputs avoids this issue.
     fn run_decoder_with_cache(
         &mut self,
         input_ids: &ArrayD<i64>,
@@ -461,16 +485,24 @@ impl MoonshineModel {
             use_cache_branch
         );
 
-        // Create owned tensors that live long enough for the IoBinding run
-        let input_ids_tensor = Tensor::from_array(input_ids.clone())?;
-        let encoder_tensor = Tensor::from_array(encoder_output.clone())?;
+        // Build inputs as a Vec of (name, DynValue) tuples for Session::run()
+        // Using Tensor::from_array() which creates properly owned tensors
+        let mut inputs: Vec<(String, DynValue)> = Vec::with_capacity(35);
+
+        // Main inputs - convert ArrayD to owned Tensor
+        let input_ids_tensor = Tensor::from_array(input_ids.clone())?.into_dyn();
+        inputs.push(("input_ids".to_string(), input_ids_tensor));
+
+        let encoder_tensor = Tensor::from_array(encoder_output.clone())?.into_dyn();
+        inputs.push(("encoder_hidden_states".to_string(), encoder_tensor));
+
         // use_cache_branch must be rank 1 (shape [1]), not rank 0 (scalar)
         // The ONNX model expects: "Invalid rank for input: use_cache_branch Got: 0 Expected: 1"
         let use_cache_array = ndarray::Array1::from_vec(vec![use_cache_branch]);
-        let use_cache_tensor = Tensor::from_array(use_cache_array)?;
+        let use_cache_tensor = Tensor::from_array(use_cache_array)?.into_dyn();
+        inputs.push(("use_cache_branch".to_string(), use_cache_tensor));
 
-        // Create all 32 past_key_values tensors (8 layers × 2 modules × 2 kv)
-        let mut cache_tensors: Vec<Tensor<f32>> = Vec::with_capacity(32);
+        // Add all 32 past_key_values (8 layers × 2 modules × 2 kv)
         for layer in 0..DECODER_NUM_LAYERS {
             for module in ["decoder", "encoder"] {
                 for kv in ["key", "value"] {
@@ -478,65 +510,30 @@ impl MoonshineModel {
                     let cache = past_key_values
                         .get(&name)
                         .ok_or_else(|| MoonshineError::InputNotFound(name.clone()))?;
-                    cache_tensors.push(Tensor::from_array(cache.clone())?);
+                    let cache_tensor = Tensor::from_array(cache.clone())?.into_dyn();
+                    inputs.push((name, cache_tensor));
                 }
             }
         }
 
-        // Create IoBinding for efficient input binding
-        let mut binding = self.decoder.create_binding()?;
+        // Run the decoder with dynamic inputs
+        let outputs = self.decoder.run(inputs)?;
 
-        // Bind the main inputs
-        binding.bind_input("input_ids", &input_ids_tensor)?;
-        binding.bind_input("encoder_hidden_states", &encoder_tensor)?;
-        binding.bind_input("use_cache_branch", &use_cache_tensor)?;
-
-        // Bind all 32 past_key_values
-        let mut cache_idx = 0;
-        for layer in 0..DECODER_NUM_LAYERS {
-            for module in ["decoder", "encoder"] {
-                for kv in ["key", "value"] {
-                    let name = format!("past_key_values.{}.{}.{}", layer, module, kv);
-                    binding.bind_input(&name, &cache_tensors[cache_idx])?;
-                    cache_idx += 1;
-                }
-            }
-        }
-
-        // Bind outputs BEFORE run_binding() - IoBinding requires explicit output binding
-        // Get the default allocator's memory info for output binding
-        let allocator = ort::memory::Allocator::default();
-        let memory_info = allocator.memory_info();
-
-        // Bind logits output
-        binding.bind_output_to_device("logits", &memory_info)?;
-
-        // Bind all 32 present.* cache outputs
-        for layer in 0..DECODER_NUM_LAYERS {
-            for module in ["decoder", "encoder"] {
-                for kv in ["key", "value"] {
-                    let present_name = format!("present.{}.{}.{}", layer, module, kv);
-                    binding.bind_output_to_device(&present_name, &memory_info)?;
-                }
-            }
-        }
-
-        // Run the decoder with the binding
-        let outputs = self.decoder.run_binding(&binding)?;
-
-        // Extract logits
+        // Extract logits using extract_to_aligned_array() to avoid alignment panics.
+        // ORT memory may not be aligned properly for ndarray's ArrayViewD requirements.
         let logits = if let Some(v) = outputs.get("logits") {
-            v.try_extract_array::<f32>()?.to_owned()
+            Self::extract_to_aligned_array(v)?
         } else {
             // Fallback to first output
             let first_output = outputs
                 .values()
                 .next()
                 .ok_or_else(|| MoonshineError::OutputNotFound("logits".to_string()))?;
-            first_output.try_extract_array::<f32>()?.to_owned()
+            Self::extract_to_aligned_array(&first_output)?
         };
 
         // Extract new cache values from present.* outputs
+        // Use extract_to_aligned_array() to avoid alignment panics with ORT memory
         let mut new_cache: HashMap<String, ArrayD<f32>> = HashMap::new();
         for layer in 0..DECODER_NUM_LAYERS {
             for module in ["decoder", "encoder"] {
@@ -545,8 +542,7 @@ impl MoonshineModel {
                     let cache_name = format!("past_key_values.{}.{}.{}", layer, module, kv);
 
                     if let Some(present) = outputs.get(&present_name) {
-                        let present_array: ArrayD<f32> =
-                            present.try_extract_array::<f32>()?.to_owned();
+                        let present_array = Self::extract_to_aligned_array(present)?;
                         new_cache.insert(cache_name, present_array);
                     } else {
                         // If no new cache value, keep the old one

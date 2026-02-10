@@ -9,9 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogExporter } from '@/components/settings/LogExporter';
+import { useAuth } from '@/contexts/AuthContext';
 
 
 export function About() {
+    const { user } = useAuth();
     const [currentVersion, setCurrentVersion] = useState<string>('0.2.0');
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
     const [isChecking, setIsChecking] = useState(false);
@@ -136,6 +138,20 @@ export function About() {
                 >
                     Habla con el equipo de Zackriya
                 </button>
+            </div>
+
+            {/* Account & Language Info */}
+            {user?.email && (
+                <div className="bg-secondary rounded p-3">
+                    <p className="text-xs text-muted-foreground">
+                        Sesión iniciada como <span className="font-medium text-foreground">{user.email}</span>
+                    </p>
+                </div>
+            )}
+            <div className="bg-secondary/50 rounded p-3">
+                <p className="text-xs text-muted-foreground">
+                    La interfaz está en español porque Maity está diseñado para equipos en Latinoamérica. Soporte multilenguaje próximamente.
+                </p>
             </div>
 
             {/* Footer - Compact */}

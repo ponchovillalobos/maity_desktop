@@ -13,7 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 
 export function About() {
-    const { user } = useAuth();
+    const { user, maityUser } = useAuth();
     const [currentVersion, setCurrentVersion] = useState<string>('0.2.0');
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
     const [isChecking, setIsChecking] = useState(false);
@@ -66,7 +66,7 @@ export function About() {
                 {/* <h1 className="text-xl font-bold text-[#000000] dark:text-white">Maity</h1> */}
                 <span className="text-sm text-muted-foreground"> v{currentVersion}</span>
                 <p className="text-medium text-muted-foreground mt-1">
-                    Notas y resúmenes en tiempo real que nunca salen de tu dispositivo.
+                    Tu coach de comunicación con IA para reuniones profesionales.
                 </p>
                 <div className="mt-3">
                     <Button
@@ -99,31 +99,20 @@ export function About() {
             {/* Features Grid - Compact */}
             <div className="space-y-3">
                 <h2 className="text-base font-semibold text-foreground">Qué hace diferente a Maity</h2>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div className="bg-secondary rounded p-3 hover:bg-muted transition-colors">
                         <h3 className="font-bold text-sm text-foreground mb-1">Privacidad primero</h3>
                         <p className="text-xs text-muted-foreground leading-relaxed">Tus datos y el procesamiento de IA pueden quedarse en tu dispositivo. Sin nube, sin filtraciones.</p>
                     </div>
                     <div className="bg-secondary rounded p-3 hover:bg-muted transition-colors">
-                        <h3 className="font-bold text-sm text-foreground mb-1">Usa Cualquier Modelo</h3>
-                        <p className="text-xs text-muted-foreground leading-relaxed">¿Prefieres modelos locales de código abierto? Genial. ¿Quieres usar una API externa? También está bien. Sin ataduras.</p>
-                    </div>
-                    <div className="bg-secondary rounded p-3 hover:bg-muted transition-colors">
-                        <h3 className="font-bold text-sm text-foreground mb-1">Ahorro Inteligente</h3>
-                        <p className="text-xs text-muted-foreground leading-relaxed">Evita facturas por minuto ejecutando modelos localmente (o paga solo por las llamadas que elijas).</p>
-                    </div>
-                    <div className="bg-secondary rounded p-3 hover:bg-muted transition-colors">
                         <h3 className="font-bold text-sm text-foreground mb-1">Funciona en todas partes</h3>
                         <p className="text-xs text-muted-foreground leading-relaxed">Google Meet, Zoom, Teams - en línea o sin conexión.</p>
                     </div>
+                    <div className="bg-secondary rounded p-3 hover:bg-muted transition-colors">
+                        <h3 className="font-bold text-sm text-foreground mb-1">Evaluación con IA</h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">Tu comunicación se evalúa automáticamente después de cada reunión con feedback personalizado.</p>
+                    </div>
                 </div>
-            </div>
-
-            {/* Coming Soon - Compact */}
-            <div className="bg-primary/10 rounded p-3">
-                <p className="text-s text-primary">
-                    <span className="font-bold">Próximamente:</span> Una biblioteca de agentes de IA en dispositivo - automatizando seguimientos, rastreo de acciones y más.
-                </p>
             </div>
 
             {/* CTA Section - Compact */}
@@ -142,10 +131,15 @@ export function About() {
 
             {/* Account & Language Info */}
             {user?.email && (
-                <div className="bg-secondary rounded p-3">
+                <div className="bg-secondary rounded p-3 space-y-1">
                     <p className="text-xs text-muted-foreground">
                         Sesión iniciada como <span className="font-medium text-foreground">{user.email}</span>
                     </p>
+                    {maityUser?.id && (
+                        <p className="text-xs text-muted-foreground">
+                            ID: <span className="font-mono text-foreground">{maityUser.id}</span>
+                        </p>
+                    )}
                 </div>
             )}
             <div className="bg-secondary/50 rounded p-3">

@@ -8,6 +8,14 @@ import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateCon
 import { storageService } from '@/services/storageService';
 import { transcriptService } from '@/services/transcriptService';
 import Analytics from '@/lib/analytics';
+import { useAuth } from '@/contexts/AuthContext';
+import { useConfig } from '@/contexts/ConfigContext';
+import {
+  saveConversationToSupabase,
+  saveTranscriptSegments,
+  updateConversationEvaluation,
+} from '@/features/conversations/services/conversations.service';
+import { supabase } from '@/lib/supabase';
 
 type SummaryStatus = 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
 
@@ -37,6 +45,10 @@ export function useRecordingStop(
   setIsRecording: (value: boolean) => void,
   setIsRecordingDisabled: (value: boolean) => void
 ): UseRecordingStopReturn {
+  // Auth and config for Supabase save
+  const { maityUser } = useAuth();
+  const { transcriptModelConfig } = useConfig();
+
   // USE global state instead
   const recordingState = useRecordingState();
   const {
@@ -265,6 +277,99 @@ export function useRecordingStop(
           console.log('   Transcripts:', freshTranscripts.length);
           console.log('   folder_path:', folderPath);
 
+          // --- Save to Supabase (non-blocking) ---
+          if (maityUser?.id && freshTranscripts.length > 0) {
+            (async () => {
+              try {
+                console.log('☁️ Saving conversation to Supabase for user:', maityUser.id);
+
+                // Build transcript text with speaker labels
+                const transcriptText = freshTranscripts.map(t => {
+                  const speaker = t.source_type === 'user' ? 'Usuario' : 'Interlocutor';
+                  return `${speaker}: ${t.text}`;
+                }).join('\n');
+
+                // Calculate duration from transcripts
+                let durationSec = 0;
+                if (freshTranscripts.length > 0) {
+                  const lastT = freshTranscripts[freshTranscripts.length - 1];
+                  durationSec = Math.round(lastT.audio_end_time || lastT.audio_start_time || 0);
+                }
+
+                // Calculate word count
+                const wordsCount = freshTranscripts
+                  .map(t => t.text.split(/\s+/).length)
+                  .reduce((a, b) => a + b, 0);
+
+                // Timestamps
+                const now = new Date().toISOString();
+                const startedAt = freshTranscripts[0]?.audio_start_time
+                  ? new Date(Date.now() - (durationSec * 1000)).toISOString()
+                  : now;
+
+                // 1. Save conversation
+                const conversationId = await saveConversationToSupabase({
+                  user_id: maityUser.id,
+                  title: savedMeetingName || meetingTitle || 'Nueva Reunión',
+                  started_at: startedAt,
+                  finished_at: now,
+                  transcript_text: transcriptText,
+                  source: 'maity_desktop',
+                  language: transcriptModelConfig?.language || 'es',
+                  words_count: wordsCount,
+                  duration_seconds: durationSec,
+                });
+                console.log('☁️ Conversation saved to Supabase:', conversationId);
+
+                // 2. Save transcript segments
+                const segments = freshTranscripts.map((t, i) => ({
+                  segment_index: t.sequence_id ?? i,
+                  text: t.text,
+                  speaker: t.source_type === 'user' ? 'SPEAKER_0' : 'SPEAKER_1',
+                  speaker_id: t.source_type === 'user' ? 0 : 1,
+                  is_user: t.source_type === 'user',
+                  start_time: t.audio_start_time || 0,
+                  end_time: t.audio_end_time || 0,
+                }));
+                await saveTranscriptSegments(conversationId, maityUser.id, segments);
+                console.log('☁️ Transcript segments saved:', segments.length);
+
+                // 3. Call DeepSeek evaluation (async, non-blocking)
+                try {
+                  console.log('🤖 Calling DeepSeek evaluation...');
+                  const { data: evalData, error: evalError } = await supabase.functions.invoke(
+                    'deepseek-evaluate',
+                    {
+                      body: {
+                        transcript_text: transcriptText,
+                        language: transcriptModelConfig?.language || 'es',
+                      },
+                    }
+                  );
+
+                  if (evalError) {
+                    console.warn('🤖 DeepSeek evaluation edge function error:', evalError);
+                  } else if (evalData) {
+                    console.log('🤖 DeepSeek evaluation received, updating conversation...');
+                    await updateConversationEvaluation(conversationId, {
+                      title: evalData.title,
+                      overview: evalData.overview,
+                      emoji: evalData.emoji,
+                      category: evalData.category,
+                      action_items: evalData.action_items,
+                      communication_feedback: evalData.communication_feedback,
+                    });
+                    console.log('✅ Conversation updated with DeepSeek evaluation');
+                  }
+                } catch (evalErr) {
+                  console.warn('🤖 DeepSeek evaluation failed (non-blocking):', evalErr);
+                }
+              } catch (supabaseErr) {
+                console.warn('☁️ Supabase save failed (non-blocking):', supabaseErr);
+              }
+            })();
+          }
+
           // Mark meeting as saved in IndexedDB (for recovery system)
           await markMeetingAsSaved();
 
@@ -407,6 +512,8 @@ export function useRecordingStop(
     meetings,
     setIsMeetingActive,
     router,
+    maityUser,
+    transcriptModelConfig,
   ]);
 
   // Expose handleRecordingStop function to window for Rust callbacks

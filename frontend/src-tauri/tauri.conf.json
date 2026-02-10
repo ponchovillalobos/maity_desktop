@@ -106,7 +106,14 @@
             "hardenedRuntime": true
         },
         "windows": {
-            "signCommand": "powershell -ExecutionPolicy Bypass -File scripts/sign-windows.ps1 -FilePath %1"
+            "signCommand": "powershell -ExecutionPolicy Bypass -File scripts/sign-windows.ps1 -FilePath %1",
+            "nsis": {
+                "languages": ["SpanishInternational"],
+                "displayLanguageSelector": false
+            },
+            "wix": {
+                "language": ["es-MX"]
+            }
         }
     },
     "plugins": {

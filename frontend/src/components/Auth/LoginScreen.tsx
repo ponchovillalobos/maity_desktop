@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { Loader2 } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
+import { listen } from '@tauri-apps/api/event'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -31,18 +32,38 @@ export function LoginScreen() {
   const { signInWithGoogle, error, isLoading } = useAuth()
   const [isSigningIn, setIsSigningIn] = useState(false)
 
+  // Reset spinner when AuthContext reports an error
+  useEffect(() => {
+    if (error) {
+      setIsSigningIn(false)
+    }
+  }, [error])
+
+  // Listen for auth-server-stopped event from Rust
+  useEffect(() => {
+    const unlisten = listen<{ reason: string }>('auth-server-stopped', (event) => {
+      if (event.payload.reason === 'timeout') {
+        console.log('[LoginScreen] Auth server timed out, resetting spinner')
+        setIsSigningIn(false)
+      }
+    })
+
+    return () => {
+      unlisten.then((fn) => fn())
+    }
+  }, [])
+
   const handleGoogleSignIn = async () => {
     setIsSigningIn(true)
     try {
       await signInWithGoogle()
-    } finally {
-      // Keep spinner until deep-link callback completes the flow
-      // If there's an error, the error state from AuthContext will show
-      // Only reset if there was an error (otherwise the callback will handle it)
-      setTimeout(() => {
-        setIsSigningIn(false)
-      }, 30000) // 30s timeout as safety net
+    } catch {
+      setIsSigningIn(false)
     }
+  }
+
+  const handleCancel = () => {
+    setIsSigningIn(false)
   }
 
   return (
@@ -91,9 +112,18 @@ export function LoginScreen() {
           </button>
 
           {isSigningIn && (
-            <p className="text-xs text-center text-[#6a6a6d] dark:text-gray-400">
-              Completa el inicio de sesion en tu navegador
-            </p>
+            <div className="flex flex-col items-center space-y-3">
+              <p className="text-xs text-center text-[#6a6a6d] dark:text-gray-400">
+                Completa el inicio de sesion en tu navegador
+              </p>
+              <button
+                onClick={handleCancel}
+                className="flex items-center gap-1.5 text-xs text-[#6a6a6d] dark:text-gray-400 hover:text-[#3a3a3c] dark:hover:text-gray-200 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cancelar</span>
+              </button>
+            </div>
           )}
         </div>
 

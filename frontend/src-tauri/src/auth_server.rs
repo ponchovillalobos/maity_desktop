@@ -94,6 +94,11 @@ struct AuthCode {
     code: String,
 }
 
+#[derive(serde::Serialize, Clone, Debug)]
+struct AuthServerStopped {
+    reason: String,
+}
+
 /// Start the OAuth callback server. Returns the port number.
 /// Idempotent: if the server is already running, returns Ok(port) immediately.
 #[tauri::command]
@@ -123,11 +128,11 @@ async fn run_server<R: Runtime>(listener: TcpListener, app: AppHandle<R>) {
     let timeout = tokio::time::sleep(std::time::Duration::from_secs(SERVER_TIMEOUT_SECS));
     tokio::pin!(timeout);
 
-    loop {
+    let shutdown_reason = loop {
         tokio::select! {
             _ = &mut timeout => {
                 log::info!("[AuthServer] Timeout reached, shutting down");
-                break;
+                break "timeout";
             }
             result = listener.accept() => {
                 match result {
@@ -136,7 +141,7 @@ async fn run_server<R: Runtime>(listener: TcpListener, app: AppHandle<R>) {
                         let should_shutdown = handle_connection(stream, app_clone).await;
                         if should_shutdown {
                             log::info!("[AuthServer] Tokens received, shutting down");
-                            break;
+                            break "tokens_received";
                         }
                     }
                     Err(e) => {
@@ -145,10 +150,16 @@ async fn run_server<R: Runtime>(listener: TcpListener, app: AppHandle<R>) {
                 }
             }
         }
+    };
+
+    if let Err(e) = app.emit("auth-server-stopped", AuthServerStopped {
+        reason: shutdown_reason.to_string(),
+    }) {
+        log::error!("[AuthServer] Failed to emit auth-server-stopped: {}", e);
     }
 
     SERVER_RUNNING.store(false, Ordering::SeqCst);
-    log::info!("[AuthServer] Server stopped");
+    log::info!("[AuthServer] Server stopped (reason: {})", shutdown_reason);
 }
 
 /// Handle a single HTTP connection. Returns true if the server should shut down.

@@ -67,6 +67,28 @@ export function MeetingDetectionDialog() {
   const [autoRecordCountdown, setAutoRecordCountdown] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
+  // Play notification sound when meeting is detected
+  const playNotificationSound = useCallback(() => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+      gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 0.5);
+    } catch (error) {
+      console.warn('[MeetingDetection] Could not play notification sound:', error);
+    }
+  }, []);
+
   // Listen for meeting detection events
   useEffect(() => {
     let unlisten: UnlistenFn | undefined
@@ -82,12 +104,14 @@ export function MeetingDetectionDialog() {
           setMeetingName(meeting.suggested_name)
           setIsOpen(true)
           setAutoRecordCountdown(null)
+          playNotificationSound()
         } else if (action === 'auto_record') {
           // Start countdown for auto-recording
           setCurrentMeeting(meeting)
           setMeetingName(meeting.suggested_name)
           setIsOpen(true)
           setAutoRecordCountdown(5) // 5 second countdown
+          playNotificationSound()
         }
       })
     }
@@ -122,19 +146,47 @@ export function MeetingDetectionDialog() {
 
     setIsLoading(true)
     try {
-      // Respond to the detection
+      // Set up listeners BEFORE invoke to avoid race condition
+      const recordingStartedPromise = new Promise<void>((resolve, reject) => {
+        let cleanup: (() => void) | undefined
+        const timeout = setTimeout(() => {
+          cleanup?.()
+          reject(new Error('Tiempo de espera agotado al iniciar grabacion'))
+        }, 10000)
+
+        listen('recording-started', () => {
+          clearTimeout(timeout)
+          cleanup?.()
+          resolve()
+        }).then(unlisten => { cleanup = unlisten })
+
+        listen<{ error: string }>('transcription-error', (event) => {
+          clearTimeout(timeout)
+          cleanup?.()
+          reject(new Error(event.payload.error || 'Error al iniciar transcripcion'))
+        }).then(unlisten => {
+          const prevCleanup = cleanup
+          cleanup = () => { prevCleanup?.(); unlisten() }
+        })
+      })
+
+      // Now invoke the command
       await invoke('respond_to_meeting_detection', {
         pid: currentMeeting.pid,
         action: rememberChoice ? 'auto_record_always' : 'start_recording',
         meetingName: meetingName,
       })
 
+      // Wait for recording to actually start
+      await recordingStartedPromise
+
+      // Success - close dialog
       setIsOpen(false)
       setCurrentMeeting(null)
       setAutoRecordCountdown(null)
     } catch (error) {
       console.error('[MeetingDetection] Failed to start recording:', error)
-      toast.error('Error al iniciar grabación', {
+      toast.error('Error al iniciar grabacion', {
         description: error instanceof Error ? error.message : String(error),
         duration: 5000,
       })

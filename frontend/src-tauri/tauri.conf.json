@@ -116,9 +116,9 @@
             }
         },
         "updater": {
-            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVDQTYzMUQ3ODc5N0M4MkEKUldRcXlKZUgxekdtN09DRkVWSHNpZlJseEVOUmpNd1dDSTNaLzZ3MXJGTnY3WW1pdnlOYjBpbkIK",
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM1QTNGQUUzRjVBN0Y0MzAKUldRdzlLZjE0L3FqTlpOa2NVVlRFMDBmVk1pcm5KbGs1NDZTK01lNGc2NlhORDJNdEdVS1NYYkMK",
             "endpoints": [
-                "https://github.com/ponchovillalobos/maity-desktop/releases/latest/download/latest.json"
+                "https://github.com/Sixale730/maity_desktop/releases/latest/download/latest.json"
             ]
         }
     }

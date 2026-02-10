@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings, Mic, Square } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { getVersion } from '@tauri-apps/api/app';
 import Info from '@/components/shared/Info';
 
 interface SidebarControlsProps {
@@ -17,6 +18,11 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
   onRecordingToggle,
 }) => {
   const router = useRouter();
+  const [version, setVersion] = useState('');
+
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => setVersion('0.2.3'));
+  }, []);
 
   if (isCollapsed) return null;
 
@@ -51,7 +57,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
       </button>
       <Info isCollapsed={isCollapsed} />
       <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-muted-foreground">
-        v0.2.0
+        {version ? `v${version}` : ''}
       </div>
     </div>
   );

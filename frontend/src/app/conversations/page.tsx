@@ -1,22 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { ConversationsList, ConversationDetail, OmiConversation } from '@/features/conversations';
-import { useUserRole } from '@/hooks/useUserRole';
 
 export default function ConversationsPage() {
-  const { isRegularUser } = useUserRole();
-  const router = useRouter();
   const [selectedConversation, setSelectedConversation] = useState<OmiConversation | null>(null);
-
-  useEffect(() => {
-    if (isRegularUser) {
-      router.replace('/');
-    }
-  }, [isRegularUser, router]);
-
-  if (isRegularUser) return null;
 
   if (selectedConversation) {
     return (

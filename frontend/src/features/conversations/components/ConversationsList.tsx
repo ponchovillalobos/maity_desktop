@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { AudioLines, Clock, MessageSquare, ChevronRight, Sparkles } from 'lucide-react';
+import { AudioLines, Clock, MessageSquare, ChevronRight, Sparkles, FileText, ListChecks } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,7 +47,7 @@ export function ConversationsList({ onSelect, selectedId }: ConversationsListPro
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Conversaciones</h1>
-          <p className="text-muted-foreground">Tu historial de conversaciones con OMI</p>
+          <p className="text-muted-foreground">Tu historial de conversaciones</p>
         </div>
       </div>
 
@@ -81,7 +81,7 @@ export function ConversationsList({ onSelect, selectedId }: ConversationsListPro
           <CardContent className="p-12 text-center">
             <AudioLines className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2 text-foreground">No hay conversaciones</h3>
-            <p className="text-muted-foreground">Tus conversaciones con OMI aparecerán aquí</p>
+            <p className="text-muted-foreground">Tus conversaciones aparecerán aquí</p>
           </CardContent>
         </Card>
       )}
@@ -127,6 +127,18 @@ export function ConversationsList({ onSelect, selectedId }: ConversationsListPro
                     {conversation.category && (
                       <Badge variant="secondary" className="text-xs">
                         {conversation.category}
+                      </Badge>
+                    )}
+                    {conversation.communication_feedback?.meeting_minutes && (
+                      <Badge variant="outline" className="text-xs gap-1">
+                        <FileText className="h-3 w-3" />
+                        Minuta
+                      </Badge>
+                    )}
+                    {conversation.action_items && conversation.action_items.length > 0 && (
+                      <Badge variant="outline" className="text-xs gap-1">
+                        <ListChecks className="h-3 w-3" />
+                        Tareas ({conversation.action_items.length})
                       </Badge>
                     )}
                     {conversation.communication_feedback && (

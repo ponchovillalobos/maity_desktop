@@ -13,6 +13,17 @@ interface NoteDetailProps {
   onClose: () => void;
 }
 
+function extractText(item: unknown): string {
+  if (typeof item === 'string') return item;
+  if (typeof item === 'object' && item !== null) {
+    const obj = item as Record<string, unknown>;
+    if ('tema' in obj) return `${obj.tema}${obj.razon ? ` — ${obj.razon}` : ''}`;
+    const firstStr = Object.values(obj).find(v => typeof v === 'string');
+    return typeof firstStr === 'string' ? firstStr : JSON.stringify(item);
+  }
+  return String(item);
+}
+
 export function NoteDetail({ conversation, onClose }: NoteDetailProps) {
   const queryClient = useQueryClient();
   const feedback = conversation.communication_feedback;
@@ -150,7 +161,7 @@ export function NoteDetail({ conversation, onClose }: NoteDetailProps) {
                   <h5 className="text-sm font-medium text-foreground mb-2">Temas tratados</h5>
                   <div className="flex flex-wrap gap-2">
                     {feedback.temas.temas_tratados.map((tema, i) => (
-                      <Badge key={i} variant="secondary">{tema}</Badge>
+                      <Badge key={i} variant="secondary">{extractText(tema)}</Badge>
                     ))}
                   </div>
                 </div>
@@ -162,7 +173,7 @@ export function NoteDetail({ conversation, onClose }: NoteDetailProps) {
                     {feedback.temas.acciones_usuario.map((acc, i) => (
                       <li key={i} className="text-sm flex items-start gap-2">
                         <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                        <span className="text-muted-foreground">{acc}</span>
+                        <span className="text-muted-foreground">{extractText(acc)}</span>
                       </li>
                     ))}
                   </ul>
@@ -173,7 +184,7 @@ export function NoteDetail({ conversation, onClose }: NoteDetailProps) {
                   <h5 className="text-sm font-medium text-amber-600 mb-2">Temas sin cerrar</h5>
                   <ul className="space-y-1">
                     {feedback.temas.temas_sin_cerrar.map((tema, i) => (
-                      <li key={i} className="text-sm text-muted-foreground">{tema}</li>
+                      <li key={i} className="text-sm text-muted-foreground">{extractText(tema)}</li>
                     ))}
                   </ul>
                 </div>

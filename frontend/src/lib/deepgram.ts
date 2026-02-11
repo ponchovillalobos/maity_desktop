@@ -33,6 +33,18 @@ const SUPABASE_URL =
  * @returns Promise<DeepgramTokenResponse> - Token and expiration info
  * @throws Error if user is not authenticated or token generation fails
  */
+export type DeepgramErrorType = 'auth' | 'network' | 'server' | 'unknown'
+
+export class DeepgramError extends Error {
+  public readonly errorType: DeepgramErrorType
+
+  constructor(message: string, errorType: DeepgramErrorType) {
+    super(message)
+    this.name = 'DeepgramError'
+    this.errorType = errorType
+  }
+}
+
 export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
   // Check if we have a valid cached token (with 30s buffer before expiry)
   const now = Date.now()
@@ -49,12 +61,26 @@ export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
 
   if (sessionError) {
     console.error('[deepgram] Session error:', sessionError.message)
-    throw new Error(`Authentication error: ${sessionError.message}`)
+    throw new DeepgramError(
+      `Error de sesión: ${sessionError.message}. Intenta cerrar sesión y volver a iniciar.`,
+      'auth'
+    )
   }
 
   if (!session) {
     console.error('[deepgram] No active session - user must be logged in')
-    throw new Error('User must be authenticated to use Deepgram transcription')
+    throw new DeepgramError('Debes iniciar sesión para grabar', 'auth')
+  }
+
+  // Helper to call the edge function with a given access token
+  const fetchToken = async (accessToken: string): Promise<Response> => {
+    return fetch(`${SUPABASE_URL}/functions/v1/deepgram-token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
   }
 
   console.log('[deepgram] Requesting new token from edge function...')
@@ -63,39 +89,82 @@ export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
   console.log('[deepgram] Token present:', !!session.access_token)
   console.log('[deepgram] Token length:', session.access_token?.length || 0)
 
-  // Call the edge function
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-token`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      'Content-Type': 'application/json',
-    },
-  })
+  let response: Response
+  try {
+    response = await fetchToken(session.access_token)
+  } catch (fetchError) {
+    console.error('[deepgram] Network error calling edge function:', fetchError)
+    throw new DeepgramError(
+      'Error de conexión. Verifica tu internet e intenta de nuevo.',
+      'network'
+    )
+  }
 
   console.log('[deepgram] Response status:', response.status, response.statusText)
 
-  if (!response.ok) {
-    let errorMessage = 'Failed to get Deepgram token'
+  // If 401, try refreshing the session and retry once
+  if (response.status === 401) {
+    console.warn('[deepgram] Got 401 - attempting session refresh and retry...')
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+
+    if (refreshError || !refreshData.session) {
+      console.error('[deepgram] Session refresh failed:', refreshError?.message)
+      throw new DeepgramError(
+        'Tu sesión ha expirado. Por favor cierra sesión y vuelve a iniciar.',
+        'auth'
+      )
+    }
+
+    console.log('[deepgram] Session refreshed, retrying with new token...')
     try {
-      // Read raw text first to see the full response
+      response = await fetchToken(refreshData.session.access_token)
+    } catch (fetchError) {
+      console.error('[deepgram] Network error on retry:', fetchError)
+      throw new DeepgramError(
+        'Error de conexión. Verifica tu internet e intenta de nuevo.',
+        'network'
+      )
+    }
+
+    console.log('[deepgram] Retry response status:', response.status, response.statusText)
+
+    if (response.status === 401) {
+      console.error('[deepgram] Still 401 after session refresh')
+      throw new DeepgramError(
+        'Tu sesión ha expirado. Por favor cierra sesión y vuelve a iniciar.',
+        'auth'
+      )
+    }
+  }
+
+  if (!response.ok) {
+    let errorDetail = ''
+    try {
       const responseText = await response.text()
       console.error('[deepgram] Raw error response:', responseText)
-
-      // Try to parse as JSON
       try {
         const errorData: DeepgramTokenError = JSON.parse(responseText)
-        errorMessage = errorData.details || errorData.error || errorMessage
+        errorDetail = errorData.details || errorData.error || ''
         console.error('[deepgram] Parsed error data:', errorData)
       } catch {
-        // Response wasn't JSON, use raw text
-        errorMessage = responseText || `HTTP ${response.status}: ${response.statusText}`
+        errorDetail = responseText
         console.error('[deepgram] Response was not JSON')
       }
     } catch (readError) {
       console.error('[deepgram] Failed to read error response:', readError)
-      errorMessage = `HTTP ${response.status}: ${response.statusText}`
     }
-    throw new Error(errorMessage)
+
+    if (response.status >= 500) {
+      throw new DeepgramError(
+        `Error del servidor al obtener credenciales de transcripción${errorDetail ? `: ${errorDetail}` : ''}`,
+        'server'
+      )
+    }
+
+    throw new DeepgramError(
+      errorDetail || `HTTP ${response.status}: ${response.statusText}`,
+      'unknown'
+    )
   }
 
   const tokenData: DeepgramTokenResponse = await response.json()

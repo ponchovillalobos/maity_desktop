@@ -8,7 +8,8 @@ import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/components/recording/recordingNotification';
 import { toast } from 'sonner';
-import { getDeepgramToken, hasValidCachedToken } from '@/lib/deepgram';
+import { getDeepgramToken, hasValidCachedToken, DeepgramError } from '@/lib/deepgram';
+import type { DeepgramErrorType } from '@/lib/deepgram';
 
 interface UseRecordingStartReturn {
   handleRecordingStart: () => Promise<void>;
@@ -19,6 +20,7 @@ interface TranscriptionReadyResult {
   ready: boolean;
   isDownloading: boolean;
   error?: string;
+  errorType?: DeepgramErrorType;
 }
 
 /**
@@ -57,6 +59,16 @@ export function useRecordingStart(
     return `Reunión ${day}_${month}_${year}_${hours}_${minutes}_${seconds}`;
   }, []);
 
+  // Get appropriate toast title based on error type
+  const getErrorToastTitle = useCallback((result: TranscriptionReadyResult): string => {
+    switch (result.errorType) {
+      case 'auth': return 'Sesión expirada';
+      case 'network': return 'Error de conexión';
+      case 'server': return 'Error del servidor';
+      default: return 'Error de transcripción';
+    }
+  }, []);
+
   // Check if transcription is ready based on selected provider
   const checkTranscriptionReady = useCallback(async (): Promise<TranscriptionReadyResult> => {
     const provider = transcriptModelConfig?.provider || 'deepgram';
@@ -92,21 +104,22 @@ export function useRecordingStart(
               name: error instanceof Error ? error.name : undefined,
               stack: error instanceof Error ? error.stack : undefined
             });
-            const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
 
-            // Check if the error is authentication-related
-            if (errorMsg.includes('authenticated') || errorMsg.includes('session')) {
+            if (error instanceof DeepgramError) {
               return {
                 ready: false,
                 isDownloading: false,
-                error: 'Debes iniciar sesión con tu cuenta de Google para usar transcripción en la nube.'
+                error: error.message,
+                errorType: error.errorType,
               };
             }
 
+            const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
             return {
               ready: false,
               isDownloading: false,
-              error: `Error al obtener token de Deepgram: ${errorMsg}`
+              error: errorMsg,
+              errorType: 'unknown',
             };
           }
         }
@@ -199,11 +212,17 @@ export function useRecordingStart(
           });
           Analytics.trackButtonClick('start_recording_blocked_downloading', 'home_page');
         } else {
-          toast.error('Modelo de transcripción no listo', {
+          const toastTitle = transcriptionStatus.errorType
+            ? getErrorToastTitle(transcriptionStatus)
+            : 'Modelo de transcripción no listo';
+          toast.error(toastTitle, {
             description: transcriptionStatus.error || 'Por favor configura un modelo de transcripción antes de grabar.',
             duration: 5000,
           });
-          showModal?.('modelSelector', 'Configuración de reconocimiento de voz requerida');
+          // Only show model selector for non-auth/network errors
+          if (!transcriptionStatus.errorType || transcriptionStatus.errorType === 'unknown') {
+            showModal?.('modelSelector', 'Configuración de reconocimiento de voz requerida');
+          }
           Analytics.trackButtonClick('start_recording_blocked_missing', 'home_page');
         }
         setStatus(RecordingStatus.IDLE);
@@ -245,7 +264,7 @@ export function useRecordingStart(
       // Re-throw so RecordingControls can handle device-specific errors
       throw error;
     }
-  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, selectedDevices, showModal, setStatus, transcriptModelConfig]);
+  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, selectedDevices, showModal, setStatus, transcriptModelConfig, getErrorToastTitle]);
 
   // Check for autoStartRecording flag and start recording automatically
   useEffect(() => {
@@ -267,11 +286,16 @@ export function useRecordingStart(
               });
               Analytics.trackButtonClick('start_recording_blocked_downloading', 'sidebar_auto');
             } else {
-              toast.error('Modelo de transcripción no listo', {
+              const toastTitle = transcriptionStatus.errorType
+                ? getErrorToastTitle(transcriptionStatus)
+                : 'Modelo de transcripción no listo';
+              toast.error(toastTitle, {
                 description: transcriptionStatus.error || 'Por favor configura un modelo de transcripción antes de grabar.',
                 duration: 5000,
               });
-              showModal?.('modelSelector', 'Configuración de reconocimiento de voz requerida');
+              if (!transcriptionStatus.errorType || transcriptionStatus.errorType === 'unknown') {
+                showModal?.('modelSelector', 'Configuración de reconocimiento de voz requerida');
+              }
               Analytics.trackButtonClick('start_recording_blocked_missing', 'sidebar_auto');
             }
             setStatus(RecordingStatus.IDLE);
@@ -330,6 +354,7 @@ export function useRecordingStart(
     checkTranscriptionReady,
     showModal,
     setStatus,
+    getErrorToastTitle,
   ]);
 
   // Listen for recording trigger from meeting detector (Tauri event)
@@ -353,7 +378,10 @@ export function useRecordingStart(
           // Check if transcription is ready
           const transcriptionStatus = await checkTranscriptionReady();
           if (!transcriptionStatus.ready) {
-            toast.error('Modelo de transcripción no listo', {
+            const toastTitle = transcriptionStatus.errorType
+              ? getErrorToastTitle(transcriptionStatus)
+              : 'Modelo de transcripción no listo';
+            toast.error(toastTitle, {
               description: transcriptionStatus.error || 'Por favor configura un modelo de transcripción antes de grabar.',
               duration: 5000,
             });
@@ -424,7 +452,7 @@ export function useRecordingStart(
         unlisten();
       }
     };
-  }, [isRecording, isAutoStarting, selectedDevices, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, setStatus]);
+  }, [isRecording, isAutoStarting, selectedDevices, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, setStatus, getErrorToastTitle]);
 
   // Listen for direct recording trigger from sidebar when already on home page
   useEffect(() => {
@@ -448,11 +476,16 @@ export function useRecordingStart(
           });
           Analytics.trackButtonClick('start_recording_blocked_downloading', 'sidebar_direct');
         } else {
-          toast.error('Modelo de transcripción no listo', {
+          const toastTitle = transcriptionStatus.errorType
+            ? getErrorToastTitle(transcriptionStatus)
+            : 'Modelo de transcripción no listo';
+          toast.error(toastTitle, {
             description: transcriptionStatus.error || 'Por favor configura un modelo de transcripción antes de grabar.',
             duration: 5000,
           });
-          showModal?.('modelSelector', 'Configuración de reconocimiento de voz requerida');
+          if (!transcriptionStatus.errorType || transcriptionStatus.errorType === 'unknown') {
+            showModal?.('modelSelector', 'Configuración de reconocimiento de voz requerida');
+          }
           Analytics.trackButtonClick('start_recording_blocked_missing', 'sidebar_direct');
         }
         setStatus(RecordingStatus.IDLE);
@@ -513,6 +546,7 @@ export function useRecordingStart(
     showModal,
     setStatus,
     transcriptModelConfig,
+    getErrorToastTitle,
   ]);
 
   // B3: Poll for audio device events during recording (disconnect/reconnect)

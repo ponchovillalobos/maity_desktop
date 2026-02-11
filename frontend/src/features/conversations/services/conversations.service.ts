@@ -25,6 +25,8 @@ export interface OmiConversation {
 export interface ActionItem {
   description: string;
   completed?: boolean;
+  assignee?: string;
+  priority?: string;  // 'high' | 'medium' | 'low'
 }
 
 export interface OmiEvent {
@@ -366,6 +368,35 @@ export async function reanalyzeConversation(
   }
 
   return updated;
+}
+
+export async function toggleActionItemCompleted(
+  conversationId: string,
+  itemIndex: number,
+  completed: boolean
+): Promise<void> {
+  // Fetch current action_items
+  const conversation = await getOmiConversation(conversationId);
+  if (!conversation || !conversation.action_items) {
+    throw new Error('Conversación o action_items no encontrados');
+  }
+
+  const updatedItems = [...conversation.action_items];
+  if (itemIndex < 0 || itemIndex >= updatedItems.length) {
+    throw new Error('Índice de action_item fuera de rango');
+  }
+
+  updatedItems[itemIndex] = { ...updatedItems[itemIndex], completed };
+
+  const { error } = await supabase
+    .from('omi_conversations')
+    .update({ action_items: updatedItems })
+    .eq('id', conversationId);
+
+  if (error) {
+    console.error('Error toggling action item:', error);
+    throw error;
+  }
 }
 
 export async function updateConversationEvaluation(

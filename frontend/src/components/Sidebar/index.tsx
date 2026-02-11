@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Trophy, MessageSquare } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Trophy, MessageSquare, FileText, ListChecks } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -449,6 +449,8 @@ const Sidebar: React.FC = () => {
     const isHomePage = pathname === '/';
     const isGamificationPage = pathname === '/gamification';
     const isConversationsPage = pathname === '/conversations';
+    const isNotesPage = pathname === '/notes';
+    const isTasksPage = pathname === '/tasks';
     const isSettingsPage = pathname === '/settings';
 
     return (
@@ -504,6 +506,42 @@ const Sidebar: React.FC = () => {
               </TooltipTrigger>
               <TooltipContent side="right">
                 <p>Conversaciones</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {isDeveloper && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => router.push('/notes')}
+                  className={`p-2 rounded-lg transition-colors duration-150 ${isNotesPage ? 'bg-secondary' : 'hover:bg-secondary'
+                    }`}
+                  aria-label="Notas"
+                >
+                  <FileText className="w-5 h-5 text-[#a78bfa]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Notas</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {isDeveloper && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => router.push('/tasks')}
+                  className={`p-2 rounded-lg transition-colors duration-150 ${isTasksPage ? 'bg-secondary' : 'hover:bg-secondary'
+                    }`}
+                  aria-label="Tareas"
+                >
+                  <ListChecks className="w-5 h-5 text-[#f97316]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Tareas</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -753,6 +791,24 @@ const Sidebar: React.FC = () => {
                   >
                     <MessageSquare className="w-4 h-4 mr-2 text-[#00f5d4]" />
                     <span>Conversaciones</span>
+                  </div>
+                )}
+                {isDeveloper && (
+                  <div
+                    onClick={() => router.push('/notes')}
+                    className={`p-3 text-lg font-semibold items-center hover:bg-secondary h-10 flex mx-3 mt-2 rounded-lg cursor-pointer text-foreground ${pathname === '/notes' ? 'bg-secondary' : ''}`}
+                  >
+                    <FileText className="w-4 h-4 mr-2 text-[#a78bfa]" />
+                    <span>Notas</span>
+                  </div>
+                )}
+                {isDeveloper && (
+                  <div
+                    onClick={() => router.push('/tasks')}
+                    className={`p-3 text-lg font-semibold items-center hover:bg-secondary h-10 flex mx-3 mt-2 rounded-lg cursor-pointer text-foreground ${pathname === '/tasks' ? 'bg-secondary' : ''}`}
+                  >
+                    <ListChecks className="w-4 h-4 mr-2 text-[#f97316]" />
+                    <span>Tareas</span>
                   </div>
                 )}
               </>

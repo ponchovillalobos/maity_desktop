@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, MessageSquare, CheckCircle2, Calendar, Sparkles, User, Bot, Lightbulb, MessageCircle, LayoutList, Shield, Target, X, FileText, RefreshCw, Loader2, BarChart3, HelpCircle, Hash, BookOpen } from 'lucide-react';
+import { ArrowLeft, Clock, MessageSquare, CheckCircle2, Calendar, Sparkles, User, Bot, Lightbulb, MessageCircle, LayoutList, Shield, Target, X, RefreshCw, Loader2, BarChart3, HelpCircle, Hash } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -436,111 +436,6 @@ export function ConversationDetail({ conversation: initialConversation, onClose,
           </Card>
         )}
 
-        {/* Temas */}
-        {feedback?.temas && (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BookOpen className="h-5 w-5 text-primary" />
-                Temas
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {feedback.temas.temas_tratados && feedback.temas.temas_tratados.length > 0 && (
-                <div>
-                  <h5 className="text-sm font-medium text-foreground mb-2">Temas tratados</h5>
-                  <div className="flex flex-wrap gap-2">
-                    {feedback.temas.temas_tratados.map((tema, i) => (
-                      <Badge key={i} variant="secondary">{tema}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {feedback.temas.acciones_usuario && feedback.temas.acciones_usuario.length > 0 && (
-                <div>
-                  <h5 className="text-sm font-medium text-foreground mb-2">Compromisos del usuario</h5>
-                  <ul className="space-y-1">
-                    {feedback.temas.acciones_usuario.map((acc, i) => (
-                      <li key={i} className="text-sm flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                        <span className="text-muted-foreground">{acc}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {feedback.temas.temas_sin_cerrar && feedback.temas.temas_sin_cerrar.length > 0 && (
-                <div>
-                  <h5 className="text-sm font-medium text-amber-600 mb-2">Temas sin cerrar</h5>
-                  <ul className="space-y-1">
-                    {feedback.temas.temas_sin_cerrar.map((tema, i) => (
-                      <li key={i} className="text-sm text-muted-foreground">• {tema}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Meeting Minutes */}
-        {feedback?.meeting_minutes && (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText className="h-5 w-5 text-primary" />
-                Minuta de Reunion
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">
-                {feedback.meeting_minutes}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Action Items */}
-        {conversation.action_items && conversation.action_items.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Acciones Pendientes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {conversation.action_items.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className={`h-4 w-4 mt-0.5 flex-shrink-0 ${item.completed ? 'text-green-500' : 'text-muted-foreground'}`} />
-                    <span className={item.completed ? 'line-through text-muted-foreground' : 'text-muted-foreground'}>
-                      {item.description}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Events */}
-        {conversation.events && conversation.events.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Eventos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-3">
-                {conversation.events.map((event, i) => (
-                  <li key={i} className="border-l-2 border-primary/30 pl-3">
-                    <div className="font-medium text-sm text-foreground">{event.title}</div>
-                    {event.description && (
-                      <div className="text-xs text-muted-foreground">{event.description}</div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* Transcript */}

@@ -6,6 +6,8 @@ export {
   getOmiTranscriptSegments,
   getOmiStats,
   reanalyzeConversation,
+  toggleActionItemCompleted,
+  updateConversationEvaluation,
 } from './services/conversations.service';
 export type {
   OmiConversation,

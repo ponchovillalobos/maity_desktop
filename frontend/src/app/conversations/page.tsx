@@ -20,7 +20,7 @@ export default function ConversationsPage() {
 
   if (selectedConversation) {
     return (
-      <div className="h-full bg-background">
+      <div className="h-full flex flex-col bg-background">
         <ConversationDetail
           conversation={selectedConversation}
           onClose={() => setSelectedConversation(null)}

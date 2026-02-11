@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Clock, MessageSquare, CheckCircle2, Calendar, Sparkles, User, Bot, Lightbulb, MessageCircle, LayoutList, Shield, Target, X, RefreshCw, Loader2, BarChart3, HelpCircle, Hash, FileText, BookOpen, ListChecks } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,12 +10,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { OmiConversation, OmiTranscriptSegment, getOmiTranscriptSegments, reanalyzeConversation, toggleActionItemCompleted } from '../services/conversations.service';
+import { OmiConversation, OmiTranscriptSegment, getOmiTranscriptSegments, getOmiConversation, reanalyzeConversation, toggleActionItemCompleted } from '../services/conversations.service';
 
 interface ConversationDetailProps {
   conversation: OmiConversation;
   onClose: () => void;
   onConversationUpdate?: (updated: OmiConversation) => void;
+  isAnalyzing?: boolean;
 }
 
 function buildTranscriptText(segments: OmiTranscriptSegment[]): string {
@@ -57,9 +58,34 @@ function InsightCard({ icon: Icon, title, content }: { icon: React.ComponentType
   );
 }
 
-export function ConversationDetail({ conversation: initialConversation, onClose, onConversationUpdate }: ConversationDetailProps) {
+export function ConversationDetail({ conversation: initialConversation, onClose, onConversationUpdate, isAnalyzing }: ConversationDetailProps) {
   const [conversation, setConversation] = useState(initialConversation);
+  const [isWaitingForAnalysis, setIsWaitingForAnalysis] = useState(isAnalyzing ?? false);
   const queryClient = useQueryClient();
+
+  // Poll for analysis completion when isAnalyzing is true
+  useEffect(() => {
+    if (!isWaitingForAnalysis) return;
+    const interval = setInterval(async () => {
+      try {
+        const updated = await getOmiConversation(conversation.id);
+        if (updated?.communication_feedback) {
+          setConversation(updated);
+          onConversationUpdate?.(updated);
+          setIsWaitingForAnalysis(false);
+          queryClient.invalidateQueries({ queryKey: ['omi-conversations'] });
+          toast.success('Analisis completado');
+        }
+      } catch (err) {
+        console.warn('Error polling for analysis:', err);
+      }
+    }, 5000);
+    const timeout = setTimeout(() => {
+      setIsWaitingForAnalysis(false);
+      toast.info('El analisis esta tardando. Puedes reanalizar manualmente.');
+    }, 120000);
+    return () => { clearInterval(interval); clearTimeout(timeout); };
+  }, [isWaitingForAnalysis, conversation.id, onConversationUpdate, queryClient]);
 
   const { data: segments, isLoading: loadingSegments } = useQuery({
     queryKey: ['omi-segments', conversation.id],
@@ -364,22 +390,32 @@ export function ConversationDetail({ conversation: initialConversation, onClose,
               )}
             </div>
           ) : (
-            /* No minutes/tasks yet — show generate button */
+            /* No minutes/tasks yet — show spinner if analyzing, otherwise generate button */
             <Card>
               <CardContent className="p-12 text-center">
-                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2 text-foreground">Sin minuta disponible</h3>
-                <p className="text-muted-foreground mb-4">Genera la minuta y tareas a partir de la transcripcion</p>
-                {reanalyzeMutation.isPending ? (
-                  <Button disabled>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Generando...
-                  </Button>
+                {isWaitingForAnalysis ? (
+                  <>
+                    <Loader2 className="h-12 w-12 mx-auto text-primary mb-4 animate-spin" />
+                    <h3 className="text-lg font-medium mb-2 text-foreground">Analizando tu conversacion...</h3>
+                    <p className="text-muted-foreground">La minuta y tareas se generaran automaticamente</p>
+                  </>
                 ) : (
-                  <Button onClick={handleReanalyze} disabled={!canAnalyze}>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Generar Minuta
-                  </Button>
+                  <>
+                    <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium mb-2 text-foreground">Sin minuta disponible</h3>
+                    <p className="text-muted-foreground mb-4">Genera la minuta y tareas a partir de la transcripcion</p>
+                    {reanalyzeMutation.isPending ? (
+                      <Button disabled>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generando...
+                      </Button>
+                    ) : (
+                      <Button onClick={handleReanalyze} disabled={!canAnalyze}>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Generar Minuta
+                      </Button>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -649,22 +685,32 @@ export function ConversationDetail({ conversation: initialConversation, onClose,
               )}
             </div>
           ) : (
-            /* No analysis yet — show analyze button */
+            /* No analysis yet — show spinner if analyzing, otherwise analyze button */
             <Card>
               <CardContent className="p-12 text-center">
-                <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2 text-foreground">Sin analisis disponible</h3>
-                <p className="text-muted-foreground mb-4">Analiza la conversacion para obtener metricas de comunicacion</p>
-                {reanalyzeMutation.isPending ? (
-                  <Button disabled>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Analizando...
-                  </Button>
+                {isWaitingForAnalysis ? (
+                  <>
+                    <Loader2 className="h-12 w-12 mx-auto text-primary mb-4 animate-spin" />
+                    <h3 className="text-lg font-medium mb-2 text-foreground">Generando analisis...</h3>
+                    <p className="text-muted-foreground">Las metricas de comunicacion se mostraran automaticamente</p>
+                  </>
                 ) : (
-                  <Button onClick={handleReanalyze} disabled={!canAnalyze}>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Analizar conversacion
-                  </Button>
+                  <>
+                    <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium mb-2 text-foreground">Sin analisis disponible</h3>
+                    <p className="text-muted-foreground mb-4">Analiza la conversacion para obtener metricas de comunicacion</p>
+                    {reanalyzeMutation.isPending ? (
+                      <Button disabled>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Analizando...
+                      </Button>
+                    ) : (
+                      <Button onClick={handleReanalyze} disabled={!canAnalyze}>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Analizar conversacion
+                      </Button>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>

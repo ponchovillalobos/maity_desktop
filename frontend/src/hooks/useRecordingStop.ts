@@ -277,39 +277,40 @@ export function useRecordingStop(
           console.log('   Transcripts:', freshTranscripts.length);
           console.log('   folder_path:', folderPath);
 
-          // --- Save to Supabase with user feedback ---
+          // --- Save to Supabase (blocking) + DeepSeek eval (fire-and-forget) ---
+          let conversationId: string | null = null;
           if (maityUser?.id && freshTranscripts.length > 0) {
-            (async () => {
-              const cloudToastId = toast.loading('Guardando en la nube...');
-              try {
-                console.log('Saving conversation to Supabase for user:', maityUser.id);
+            const cloudToastId = toast.loading('Guardando en la nube...');
+            try {
+              console.log('Saving conversation to Supabase for user:', maityUser.id);
 
-                // Build transcript text with speaker labels
-                const transcriptText = freshTranscripts.map(t => {
-                  const speaker = t.source_type === 'user' ? 'Usuario' : 'Interlocutor';
-                  return `${speaker}: ${t.text}`;
-                }).join('\n');
+              // Build transcript text with speaker labels
+              const transcriptText = freshTranscripts.map(t => {
+                const speaker = t.source_type === 'user' ? 'Usuario' : 'Interlocutor';
+                return `${speaker}: ${t.text}`;
+              }).join('\n');
 
-                // Calculate duration from transcripts
-                let durationSec = 0;
-                if (freshTranscripts.length > 0) {
-                  const lastT = freshTranscripts[freshTranscripts.length - 1];
-                  durationSec = Math.round(lastT.audio_end_time || lastT.audio_start_time || 0);
-                }
+              // Calculate duration from transcripts
+              let durationSec = 0;
+              if (freshTranscripts.length > 0) {
+                const lastT = freshTranscripts[freshTranscripts.length - 1];
+                durationSec = Math.round(lastT.audio_end_time || lastT.audio_start_time || 0);
+              }
 
-                // Calculate word count
-                const wordsCount = freshTranscripts
-                  .map(t => t.text.split(/\s+/).length)
-                  .reduce((a, b) => a + b, 0);
+              // Calculate word count
+              const wordsCount = freshTranscripts
+                .map(t => t.text.split(/\s+/).length)
+                .reduce((a, b) => a + b, 0);
 
-                // Timestamps
-                const now = new Date().toISOString();
-                const startedAt = freshTranscripts[0]?.audio_start_time
-                  ? new Date(Date.now() - (durationSec * 1000)).toISOString()
-                  : now;
+              // Timestamps
+              const now = new Date().toISOString();
+              const startedAt = freshTranscripts[0]?.audio_start_time
+                ? new Date(Date.now() - (durationSec * 1000)).toISOString()
+                : now;
 
-                // 1. Save conversation
-                const conversationId = await saveConversationToSupabase({
+              // 1. Save conversation BLOCKING with 15s timeout
+              conversationId = await Promise.race([
+                saveConversationToSupabase({
                   user_id: maityUser.id,
                   title: savedMeetingName || meetingTitle || 'Nueva Reunión',
                   started_at: startedAt,
@@ -319,78 +320,88 @@ export function useRecordingStop(
                   language: transcriptModelConfig?.language || 'es',
                   words_count: wordsCount,
                   duration_seconds: durationSec,
-                });
-                console.log('Conversation saved to Supabase:', conversationId);
+                }),
+                new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Supabase save timeout')), 15000)),
+              ]);
+              console.log('Conversation saved to Supabase:', conversationId);
 
-                // 2. Save transcript segments
-                const segments = freshTranscripts.map((t, i) => ({
-                  segment_index: t.sequence_id ?? i,
-                  text: t.text,
-                  speaker: t.source_type === 'user' ? 'SPEAKER_0' : 'SPEAKER_1',
-                  speaker_id: t.source_type === 'user' ? 0 : 1,
-                  is_user: t.source_type === 'user',
-                  start_time: t.audio_start_time || 0,
-                  end_time: t.audio_end_time || 0,
-                }));
-                await saveTranscriptSegments(conversationId, maityUser.id, segments);
-                console.log('Transcript segments saved:', segments.length);
+              // 2. Save transcript segments BLOCKING
+              const segments = freshTranscripts.map((t, i) => ({
+                segment_index: t.sequence_id ?? i,
+                text: t.text,
+                speaker: t.source_type === 'user' ? 'SPEAKER_0' : 'SPEAKER_1',
+                speaker_id: t.source_type === 'user' ? 0 : 1,
+                is_user: t.source_type === 'user',
+                start_time: t.audio_start_time || 0,
+                end_time: t.audio_end_time || 0,
+              }));
+              await saveTranscriptSegments(conversationId, maityUser.id, segments);
+              console.log('Transcript segments saved:', segments.length);
+              toast.success('Guardado en la nube', { id: cloudToastId, duration: 3000 });
 
-                // 3. Call DeepSeek evaluation with 1 retry
-                toast.loading('Analizando comunicacion con IA...', { id: cloudToastId });
-                let evalSuccess = false;
-                for (let attempt = 1; attempt <= 2; attempt++) {
-                  try {
-                    console.log(`DeepSeek evaluation attempt ${attempt}...`);
-                    const { data: evalData, error: evalError } = await supabase.functions.invoke(
-                      'deepseek-evaluate',
-                      {
-                        body: {
-                          transcript_text: transcriptText,
-                          language: transcriptModelConfig?.language || 'es',
-                        },
+              // 3. DeepSeek evaluation ASYNC (fire-and-forget) — results will be polled by ConversationDetail
+              (async () => {
+                const evalToastId = toast.loading('Analizando comunicacion con IA...');
+                try {
+                  let evalSuccess = false;
+                  for (let attempt = 1; attempt <= 2; attempt++) {
+                    try {
+                      console.log(`DeepSeek evaluation attempt ${attempt}...`);
+                      const { data: evalData, error: evalError } = await supabase.functions.invoke(
+                        'deepseek-evaluate',
+                        {
+                          body: {
+                            transcript_text: transcriptText,
+                            language: transcriptModelConfig?.language || 'es',
+                          },
+                        }
+                      );
+
+                      if (evalError) {
+                        console.warn(`DeepSeek attempt ${attempt} error:`, evalError);
+                        if (attempt === 2) throw evalError;
+                        continue;
                       }
-                    );
 
-                    if (evalError) {
-                      console.warn(`DeepSeek attempt ${attempt} error:`, evalError);
-                      if (attempt === 2) throw evalError;
-                      continue;
+                      if (evalData && conversationId) {
+                        console.log('DeepSeek evaluation received, updating conversation...');
+                        await updateConversationEvaluation(conversationId, {
+                          title: evalData.title,
+                          overview: evalData.overview,
+                          emoji: evalData.emoji,
+                          category: evalData.category,
+                          action_items: evalData.action_items,
+                          communication_feedback: evalData.communication_feedback,
+                        });
+                        evalSuccess = true;
+                        console.log('Conversation updated with DeepSeek evaluation');
+                        break;
+                      }
+                    } catch (err) {
+                      console.warn(`DeepSeek attempt ${attempt} failed:`, err);
+                      if (attempt === 2) throw err;
                     }
-
-                    if (evalData) {
-                      console.log('DeepSeek evaluation received, updating conversation...');
-                      await updateConversationEvaluation(conversationId, {
-                        title: evalData.title,
-                        overview: evalData.overview,
-                        emoji: evalData.emoji,
-                        category: evalData.category,
-                        action_items: evalData.action_items,
-                        communication_feedback: evalData.communication_feedback,
-                      });
-                      evalSuccess = true;
-                      console.log('Conversation updated with DeepSeek evaluation');
-                      break;
-                    }
-                  } catch (err) {
-                    console.warn(`DeepSeek attempt ${attempt} failed:`, err);
-                    if (attempt === 2) throw err;
                   }
-                }
 
-                if (evalSuccess) {
-                  toast.success('Analisis de comunicacion completado', { id: cloudToastId, duration: 5000 });
-                } else {
-                  toast.success('Guardado en la nube (sin analisis)', { id: cloudToastId, duration: 5000 });
+                  if (evalSuccess) {
+                    toast.success('Analisis de comunicacion completado', { id: evalToastId, duration: 5000 });
+                  } else {
+                    toast.dismiss(evalToastId);
+                  }
+                } catch (err) {
+                  console.error('DeepSeek eval error:', err);
+                  toast.error('Error en analisis de comunicacion', {
+                    id: evalToastId,
+                    duration: 10000,
+                    description: 'Puedes reanalizar manualmente desde la conversacion.',
+                  });
                 }
-              } catch (err) {
-                console.error('Cloud save/eval error:', err);
-                toast.error('Error en analisis de comunicacion', {
-                  id: cloudToastId,
-                  duration: 10000,
-                  description: 'Los datos de la reunion se guardaron localmente.',
-                });
-              }
-            })();
+              })();
+            } catch (err) {
+              console.warn('Supabase save failed, fallback to local:', err);
+              toast.dismiss();
+              conversationId = null;
+            }
           }
 
           // Mark meeting as saved in IndexedDB (for recovery system)
@@ -422,28 +433,26 @@ export function useRecordingStop(
           // Mark as completed
           setStatus(RecordingStatus.COMPLETED);
 
-          // Show success toast with navigation option
+          // Show success toast
           toast.success('¡Grabación guardada exitosamente!', {
             description: `${freshTranscripts.length} segmentos de transcripción guardados.`,
-            action: {
-              label: 'Ver Reunión',
-              onClick: () => {
-                router.push(`/meeting-details?id=${meetingId}`);
-                Analytics.trackButtonClick('view_meeting_from_toast', 'recording_complete');
-              }
-            },
-            duration: 10000,
+            duration: 5000,
           });
 
-          // Auto-navigate after a short delay with source parameter
+          // Auto-navigate: prefer conversations view if Supabase save succeeded, fallback to meeting-details
           setTimeout(() => {
-            router.push(`/meeting-details?id=${meetingId}&source=recording`);
-            clearTranscripts()
-            Analytics.trackPageView('meeting_details');
+            if (conversationId) {
+              router.push(`/conversations?id=${conversationId}&source=recording`);
+              Analytics.trackPageView('conversations_detail');
+            } else {
+              router.push(`/meeting-details?id=${meetingId}&source=recording`);
+              Analytics.trackPageView('meeting_details');
+            }
+            clearTranscripts();
 
             // Reset to IDLE after navigation
             setStatus(RecordingStatus.IDLE);
-          }, 2000);
+          }, 1500);
           // Track meeting completion analytics
           try {
             // Calculate meeting duration from transcript timestamps

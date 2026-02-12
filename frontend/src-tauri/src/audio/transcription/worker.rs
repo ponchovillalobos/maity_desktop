@@ -668,9 +668,12 @@ async fn transcribe_chunk_with_provider<R: Runtime>(
             // Deepgram dual persistent streaming: route audio to correct instance by device_type
             // The reader task handles transcript emission directly
             let dg = match device_type {
-                crate::audio::recording_state::DeviceType::Microphone
-                | crate::audio::recording_state::DeviceType::Mixed => mic,
+                crate::audio::recording_state::DeviceType::Microphone => mic,
                 crate::audio::recording_state::DeviceType::System => sys,
+                crate::audio::recording_state::DeviceType::Mixed => {
+                    warn!("Unexpected Mixed device_type in Deepgram transcription, skipping");
+                    return Ok((String::new(), None, false));
+                }
             };
             let language = crate::get_language_preference_internal();
 

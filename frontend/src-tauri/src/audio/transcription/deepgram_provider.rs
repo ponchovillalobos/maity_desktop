@@ -14,7 +14,7 @@ use log::{debug, error, info, warn};
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{
@@ -127,6 +127,9 @@ pub struct DeepgramRealtimeTranscriber {
     /// Fixed source label for this transcriber instance ("user" or "interlocutor").
     /// Set once at creation; the reader task uses this instead of per-chunk metadata.
     source_label: Arc<Mutex<Option<String>>>,
+    /// Generation counter: incremented on each new WebSocket connection.
+    /// Reader tasks check this to detect they've been superseded and should exit.
+    connection_generation: Arc<AtomicU64>,
 }
 
 impl DeepgramRealtimeTranscriber {
@@ -156,6 +159,7 @@ impl DeepgramRealtimeTranscriber {
             chunk_info_queue: Arc::new(Mutex::new(VecDeque::new())),
             interim_text: Arc::new(Mutex::new(String::new())),
             source_label: Arc::new(Mutex::new(None)),
+            connection_generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -297,7 +301,7 @@ impl DeepgramRealtimeTranscriber {
             channels={}&\
             punctuate={}&\
             interim_results={}&\
-            endpointing=300&\
+            endpointing=200&\
             vad_events=true",
             self.config.model,
             language_param,
@@ -403,15 +407,29 @@ impl DeepgramRealtimeTranscriber {
         *self.persistent_ws.lock().await = Some(write);
         *self.is_connected.lock().await = true;
 
+        // Abort any existing reader task before spawning a new one
+        {
+            let mut handle_guard = self.reader_handle.lock().await;
+            if let Some(old_handle) = handle_guard.take() {
+                info!("[DEEPGRAM-{}] Aborting previous reader task", label);
+                old_handle.abort();
+            }
+        }
+
+        // Increment connection generation so stale readers will exit
+        let my_generation = self.connection_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        info!("[DEEPGRAM-{}] New connection generation: {}", label, my_generation);
+
         // Spawn the reader task
         let chunk_info_queue = self.chunk_info_queue.clone();
         let event_emitter = self.event_emitter.clone();
         let is_connected = self.is_connected.clone();
         let interim_text = self.interim_text.clone();
         let source_label = self.source_label.clone();
+        let connection_generation = self.connection_generation.clone();
 
         let reader_handle = tokio::spawn(async move {
-            Self::reader_task(read, chunk_info_queue, event_emitter, is_connected, interim_text, source_label).await;
+            Self::reader_task(read, chunk_info_queue, event_emitter, is_connected, interim_text, source_label, connection_generation, my_generation).await;
         });
 
         *self.reader_handle.lock().await = Some(reader_handle);
@@ -450,13 +468,21 @@ impl DeepgramRealtimeTranscriber {
         is_connected: Arc<Mutex<bool>>,
         interim_text: Arc<Mutex<String>>,
         source_label: Arc<Mutex<Option<String>>>,
+        connection_generation: Arc<AtomicU64>,
+        my_generation: u64,
     ) {
         let label = source_label.lock().await.clone()
             .unwrap_or_else(|| "unknown".to_string())
             .to_uppercase();
-        info!("[DEEPGRAM-{}] Reader task started", label);
+        info!("[DEEPGRAM-{}] Reader task started (generation {})", label, my_generation);
 
         while let Some(msg) = read.next().await {
+            // Check if this reader has been superseded by a newer connection
+            if connection_generation.load(Ordering::SeqCst) != my_generation {
+                info!("[DEEPGRAM-{}] Reader task generation {} is stale (current: {}), exiting",
+                    label, my_generation, connection_generation.load(Ordering::SeqCst));
+                break;
+            }
             match msg {
                 Ok(Message::Text(text)) => {
                     // Parse the Deepgram response
@@ -480,6 +506,9 @@ impl DeepgramRealtimeTranscriber {
                     };
 
                     let is_final = response.is_final.unwrap_or(false);
+                    // speech_final indicates a natural pause in speech (end of utterance).
+                    // Treating it as final reduces latency by ~200-500ms vs waiting for is_final.
+                    let should_emit_final = is_final || response.speech_final.unwrap_or(false);
 
                     if alt.transcript.is_empty() {
                         continue;
@@ -489,7 +518,7 @@ impl DeepgramRealtimeTranscriber {
                     // (each transcriber instance handles only one audio source)
                     let source_type = source_label.lock().await.clone();
 
-                    if is_final {
+                    if should_emit_final {
                         // Final result - emit transcript-update event
                         let transcript = alt.transcript.clone();
                         let confidence = alt.confidence;
@@ -639,9 +668,19 @@ impl TranscriptionProvider for DeepgramRealtimeTranscriber {
             let label = self.source_label.lock().await.clone().unwrap_or_else(|| "unknown".to_string());
             warn!("[DEEPGRAM-{}] Send failed, attempting reconnect: {}", label.to_uppercase(), e);
 
-            // Clear old connection state
+            // Abort old reader task to prevent duplicate emissions
+            {
+                let mut handle_guard = self.reader_handle.lock().await;
+                if let Some(old_handle) = handle_guard.take() {
+                    old_handle.abort();
+                }
+            }
+
+            // Clear old connection state and stale metadata
             *self.persistent_ws.lock().await = None;
             *self.is_connected.lock().await = false;
+            self.chunk_info_queue.lock().await.clear();
+            self.interim_text.lock().await.clear();
 
             // Reconnect
             self.ensure_connected(language.as_deref()).await?;

@@ -189,105 +189,43 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     let unlistenFn: (() => void) | undefined;
     let transcriptCounter = 0;
     let transcriptBuffer = new Map<number, Transcript>();
-    let lastProcessedSequence = 0;
-    let processingTimer: NodeJS.Timeout | undefined;
+    let processingTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const processBufferedTranscripts = (forceFlush = false) => {
-      const sortedTranscripts: Transcript[] = [];
+    const processBufferedTranscripts = () => {
+      if (transcriptBuffer.size === 0) return;
 
-      // Process all available sequential transcripts
-      let nextSequence = lastProcessedSequence + 1;
-      while (transcriptBuffer.has(nextSequence)) {
-        const bufferedTranscript = transcriptBuffer.get(nextSequence)!;
-        sortedTranscripts.push(bufferedTranscript);
-        transcriptBuffer.delete(nextSequence);
-        lastProcessedSequence = nextSequence;
-        nextSequence++;
+      // Drain all buffered transcripts and sort by sequence_id
+      const allNew: Transcript[] = [];
+      for (const [seqId, t] of transcriptBuffer.entries()) {
+        allNew.push(t);
+        transcriptBuffer.delete(seqId);
       }
+      allNew.sort((a, b) => {
+        const seqDiff = (a.sequence_id || 0) - (b.sequence_id || 0);
+        if (seqDiff !== 0) return seqDiff;
+        return (a.audio_start_time ?? 0) - (b.audio_start_time ?? 0);
+      });
 
-      // Add any buffered transcripts that might be out of order
-      const now = Date.now();
-      const staleThreshold = 100;  // 100ms safety net only (serial workers = sequential order)
-      const recentThreshold = 0;    // Show immediately - no delay needed with serial processing
-      const staleTranscripts: Transcript[] = [];
-      const recentTranscripts: Transcript[] = [];
-      const forceFlushTranscripts: Transcript[] = [];
+      setTranscripts(prev => {
+        const existingSequenceIds = new Set(prev.map(t => t.sequence_id).filter(id => id !== undefined));
+        const uniqueNew = allNew.filter(t =>
+          t.sequence_id !== undefined && !existingSequenceIds.has(t.sequence_id)
+        );
 
-      for (const [sequenceId, transcript] of transcriptBuffer.entries()) {
-        if (forceFlush) {
-          // Force flush mode: process ALL remaining transcripts regardless of timing
-          forceFlushTranscripts.push(transcript);
-          transcriptBuffer.delete(sequenceId);
-          console.log(`Force flush: processing transcript with sequence_id ${sequenceId}`);
-        } else {
-          const transcriptAge = now - parseInt(transcript.id.split('-')[0]);
-          if (transcriptAge > staleThreshold) {
-            // Process stale transcripts (>100ms old - safety net)
-            staleTranscripts.push(transcript);
-            transcriptBuffer.delete(sequenceId);
-          } else if (transcriptAge >= recentThreshold) {
-            // Process immediately (0ms threshold with serial workers)
-            recentTranscripts.push(transcript);
-            transcriptBuffer.delete(sequenceId);
-            console.log(`Processing transcript with sequence_id ${sequenceId}, age: ${transcriptAge}ms`);
-          }
-        }
-      }
+        if (uniqueNew.length === 0) return prev;
 
-      // Sort by sequence_id (primary), then audio_start_time (tiebreaker)
-      const sortTranscripts = (transcripts: Transcript[]) => {
-        return transcripts.sort((a, b) => {
+        console.log(`Adding ${uniqueNew.length} unique transcripts out of ${allNew.length} received`);
+
+        return [...prev, ...uniqueNew].sort((a, b) => {
           const seqDiff = (a.sequence_id || 0) - (b.sequence_id || 0);
           if (seqDiff !== 0) return seqDiff;
           return (a.audio_start_time ?? 0) - (b.audio_start_time ?? 0);
         });
-      };
-
-      const sortedStaleTranscripts = sortTranscripts(staleTranscripts);
-      const sortedRecentTranscripts = sortTranscripts(recentTranscripts);
-      const sortedForceFlushTranscripts = sortTranscripts(forceFlushTranscripts);
-
-      const allNewTranscripts = [...sortedTranscripts, ...sortedRecentTranscripts, ...sortedStaleTranscripts, ...sortedForceFlushTranscripts];
-
-      if (allNewTranscripts.length > 0) {
-        setTranscripts(prev => {
-          // Create a set of existing sequence_ids for deduplication
-          const existingSequenceIds = new Set(prev.map(t => t.sequence_id).filter(id => id !== undefined));
-
-          // Filter out any new transcripts that already exist
-          const uniqueNewTranscripts = allNewTranscripts.filter(transcript =>
-            transcript.sequence_id !== undefined && !existingSequenceIds.has(transcript.sequence_id)
-          );
-
-          // Only combine if we have unique new transcripts
-          if (uniqueNewTranscripts.length === 0) {
-            console.log('No unique transcripts to add - all were duplicates');
-            return prev; // No new unique transcripts to add
-          }
-
-          console.log(`Adding ${uniqueNewTranscripts.length} unique transcripts out of ${allNewTranscripts.length} received`);
-
-          // Merge with existing transcripts, maintaining chronological order
-          const combined = [...prev, ...uniqueNewTranscripts];
-
-          // Sort by sequence_id (primary), then audio_start_time (tiebreaker)
-          return combined.sort((a, b) => {
-            const seqDiff = (a.sequence_id || 0) - (b.sequence_id || 0);
-            if (seqDiff !== 0) return seqDiff;
-            return (a.audio_start_time ?? 0) - (b.audio_start_time ?? 0);
-          });
-        });
-
-        // Log the processing summary
-        const logMessage = forceFlush
-          ? `Force flush processed ${allNewTranscripts.length} transcripts (${sortedTranscripts.length} sequential, ${forceFlushTranscripts.length} forced)`
-          : `Processed ${allNewTranscripts.length} transcripts (${sortedTranscripts.length} sequential, ${recentTranscripts.length} recent, ${staleTranscripts.length} stale)`;
-        console.log(logMessage);
-      }
+      });
     };
 
     // Assign final flush function to ref for external access
-    finalFlushRef.current = () => processBufferedTranscripts(true);
+    finalFlushRef.current = () => processBufferedTranscripts();
 
     const setupListener = async () => {
       try {
@@ -328,7 +266,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
 
           // Add to buffer
           transcriptBuffer.set(update.sequence_id, newTranscript);
-          console.log(`✅ MAIN LISTENER: Buffered transcript with sequence_id ${update.sequence_id}. Buffer size: ${transcriptBuffer.size}, Last processed: ${lastProcessedSequence}`);
+          console.log(`✅ MAIN LISTENER: Buffered transcript with sequence_id ${update.sequence_id}. Buffer size: ${transcriptBuffer.size}`);
 
           // Save to IndexedDB (non-blocking) - use ref to avoid dependency issues
           if (currentMeetingIdRef.current) {
@@ -336,13 +274,17 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
               .catch(err => console.warn('IndexedDB save failed:', err));
           }
 
-          // Clear any existing timer and set a new one
-          if (processingTimer) {
-            clearTimeout(processingTimer);
+          // Throttle: process immediately on first event, then at most every 16ms (~60fps)
+          // Unlike debounce, throttle ensures the first event is never delayed
+          if (!processingTimer) {
+            processBufferedTranscripts();
+            processingTimer = setTimeout(() => {
+              processingTimer = undefined;
+              if (transcriptBuffer.size > 0) {
+                processBufferedTranscripts();
+              }
+            }, 16);
           }
-
-          // Process buffer with minimal delay for immediate UI updates (serial workers = sequential order)
-          processingTimer = setTimeout(processBufferedTranscripts, 10);
         });
         console.log('✅ MAIN transcript listener setup complete');
       } catch (error) {

@@ -74,9 +74,9 @@ impl TranscriptionEngine {
     ) {
         if let Self::Deepgram { mic, sys } = self {
             let dg = match device_type {
-                crate::audio::recording_state::DeviceType::Microphone
-                | crate::audio::recording_state::DeviceType::Mixed => mic,
+                crate::audio::recording_state::DeviceType::Microphone => mic,
                 crate::audio::recording_state::DeviceType::System => sys,
+                crate::audio::recording_state::DeviceType::Mixed => { return; }
             };
             dg.queue_chunk_info(audio_start_time, audio_end_time, duration).await;
         }
@@ -92,9 +92,13 @@ impl TranscriptionEngine {
     ) -> Result<super::provider::TranscriptResult, super::provider::TranscriptionError> {
         if let Self::Deepgram { mic, sys } = self {
             let dg = match device_type {
-                crate::audio::recording_state::DeviceType::Microphone
-                | crate::audio::recording_state::DeviceType::Mixed => mic,
+                crate::audio::recording_state::DeviceType::Microphone => mic,
                 crate::audio::recording_state::DeviceType::System => sys,
+                crate::audio::recording_state::DeviceType::Mixed => {
+                    return Err(super::provider::TranscriptionError::EngineFailed(
+                        "Mixed device_type should not reach Deepgram transcription".to_string(),
+                    ));
+                }
             };
             dg.transcribe(audio, language).await
         } else {

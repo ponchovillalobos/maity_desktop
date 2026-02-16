@@ -94,3 +94,6 @@ nul
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# MCP server config (contains secrets)
+.mcp.json

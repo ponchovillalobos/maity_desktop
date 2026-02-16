@@ -124,6 +124,7 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
+      db: { schema: 'maity' },
     });
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -135,7 +136,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("User authenticated:", user.id, user.email);
+    // Verificar que el usuario existe en maity.users con status ACTIVE
+    const { data: maityUser, error: maityUserError } = await supabase
+      .from('users')
+      .select('id, status, email')
+      .eq('auth_id', user.id)
+      .single();
+
+    if (maityUserError || !maityUser || maityUser.status !== 'ACTIVE') {
+      console.warn("[AUDIT] DeepSeek access denied:", user.id, user.email,
+        "status:", maityUser?.status || 'NOT_FOUND');
+      return new Response(
+        JSON.stringify({ error: "Account not approved for cloud evaluation" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("[AUDIT] DeepSeek evaluation granted:", JSON.stringify({
+      user_id: user.id, email: user.email, timestamp: new Date().toISOString()
+    }));
 
     // Parsear el body
     const body = await req.json();

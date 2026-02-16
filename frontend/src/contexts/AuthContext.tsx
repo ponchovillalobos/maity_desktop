@@ -78,13 +78,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           authUser.email?.split('@')[0] ||
           ''
 
+        const email = authUser.email || ''
+        const domain = email.split('@')[1]?.toLowerCase() || ''
+        const TRUSTED_DOMAINS = ['asertio.mx', 'maity.cloud']
+        const initialStatus = TRUSTED_DOMAINS.includes(domain) ? 'ACTIVE' : 'PENDING_APPROVAL'
+
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({
             auth_id: authUser.id,
             name: userName,
             email: authUser.email || null,
-            status: 'ACTIVE',
+            status: initialStatus,
           })
           .select('id, auth_id, name, email, status, created_at, updated_at')
           .single()

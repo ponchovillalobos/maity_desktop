@@ -14,7 +14,7 @@ function getSupabaseClient(): SupabaseClient {
   // Credenciales de producción de Supabase (seguras para cliente - la seguridad viene de RLS)
   // Las variables de entorno pueden usarse para override en desarrollo
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nhlrtflkxoojvhbyocet.supabase.co'
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5obHJ0ZmxreG9vanZoYnlvY2V0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjY3MTUsImV4cCI6MjA2Nzc0MjcxNX0.u7FqcLjO1sVxy-L3yrHp0JkC0WKv9xCQxFBwsVixqbw'
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_9gJhm89FHYgH68xrW21Iqg_zuKXnFnq'
 
   supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {

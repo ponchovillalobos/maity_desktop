@@ -26,7 +26,7 @@ export function About() {
 
     const handleContactClick = async () => {
         try {
-            await invoke('open_external_url', { url: 'https://maity.com.mx' });
+            await invoke('open_external_url', { url: 'https://maity.cloud' });
         } catch (error) {
             console.error('Failed to open link:', error);
         }

@@ -8,7 +8,7 @@ import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/components/recording/recordingNotification';
 import { toast } from 'sonner';
-import { getDeepgramToken, hasValidCachedToken, DeepgramError } from '@/lib/deepgram';
+import { getDeepgramProxyConfig, hasValidCachedProxyConfig, DeepgramError } from '@/lib/deepgram';
 import type { DeepgramErrorType } from '@/lib/deepgram';
 
 interface UseRecordingStartReturn {
@@ -77,29 +77,29 @@ export function useRecordingStart(
     try {
       switch (provider) {
         case 'deepgram': {
-          // For Deepgram (cloud), get a temporary token from the cloud proxy
+          // For Deepgram (cloud), get proxy config from Vercel API
           // This requires the user to be authenticated with Supabase
           try {
-            console.log('[recording] Deepgram: checking auth status and token...');
+            console.log('[recording] Deepgram: checking auth status and proxy config...');
 
-            // Check if we already have a valid cached token
-            if (hasValidCachedToken()) {
-              console.log('✅ Deepgram cloud token already cached, ready to record');
+            // Check if we already have a valid cached proxy config
+            if (hasValidCachedProxyConfig()) {
+              console.log('✅ Deepgram proxy config already cached, ready to record');
               return { ready: true, isDownloading: false };
             }
 
-            // Fetch a new token from the edge function
-            console.log('🔄 Fetching Deepgram cloud token...');
-            const { token, expires_in } = await getDeepgramToken();
+            // Fetch proxy config from the Vercel API
+            console.log('🔄 Fetching Deepgram proxy config...');
+            const { proxyBaseUrl, jwt, expiresIn } = await getDeepgramProxyConfig();
 
-            // Pass the token to the Rust backend
-            await invoke('set_deepgram_cloud_token', { token, expiresIn: expires_in });
-            console.log('✅ Deepgram cloud token obtained and set, ready to record');
+            // Pass the proxy config to the Rust backend
+            await invoke('set_deepgram_proxy_config', { proxyBaseUrl, jwt, expiresIn });
+            console.log('✅ Deepgram proxy config obtained and set, ready to record');
 
             return { ready: true, isDownloading: false };
           } catch (error) {
-            console.error('❌ Failed to get Deepgram cloud token:', error);
-            console.error('[recording] Deepgram token error details:', {
+            console.error('❌ Failed to get Deepgram proxy config:', error);
+            console.error('[recording] Deepgram proxy config error details:', {
               message: error instanceof Error ? error.message : String(error),
               name: error instanceof Error ? error.name : undefined,
               stack: error instanceof Error ? error.stack : undefined

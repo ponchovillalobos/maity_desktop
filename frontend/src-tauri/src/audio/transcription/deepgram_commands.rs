@@ -1,7 +1,8 @@
 // audio/transcription/deepgram_commands.rs
 //
 // Tauri commands for Deepgram cloud transcription service.
-// Handles cloud proxy token management for users without their own API key.
+// Handles proxy configuration management for connecting via Cloudflare Worker proxy.
+// The API key never reaches the client — the proxy holds it server-side.
 
 use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
@@ -9,33 +10,35 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 // ============================================================================
-// CLOUD TOKEN CACHE
+// PROXY CONFIG CACHE
 // ============================================================================
 
-/// Cached cloud token with expiration tracking
-struct CachedToken {
-    token: String,
+/// Cached proxy configuration with expiration tracking
+struct CachedProxyConfig {
+    proxy_base_url: String,
+    jwt: String,
     expires_at: Instant,
 }
 
-/// Global cache for cloud proxy token
-static CLOUD_TOKEN_CACHE: Mutex<Option<CachedToken>> = Mutex::new(None);
+/// Global cache for proxy configuration
+static PROXY_CONFIG_CACHE: Mutex<Option<CachedProxyConfig>> = Mutex::new(None);
 
-/// Buffer time before token expiry to trigger refresh (30 seconds)
-const TOKEN_REFRESH_BUFFER_SECS: u64 = 30;
+/// Buffer time before config expiry to trigger refresh (30 seconds)
+const CONFIG_REFRESH_BUFFER_SECS: u64 = 30;
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeepgramCloudToken {
-    pub token: String,
+pub struct DeepgramProxyConfig {
+    pub proxy_base_url: String,
+    pub jwt: String,
     pub expires_in: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeepgramCloudTokenError {
+pub struct DeepgramProxyConfigError {
     pub error: String,
     pub details: Option<String>,
 }
@@ -44,54 +47,59 @@ pub struct DeepgramCloudTokenError {
 // TAURI COMMANDS
 // ============================================================================
 
-/// Set the cloud proxy token (called from frontend after fetching from edge function)
-/// This is the bridge between the TypeScript edge function client and Rust transcription
+/// Set the proxy configuration (called from frontend after fetching from Vercel API)
+/// This is the bridge between the TypeScript API client and Rust transcription
 #[tauri::command]
-pub async fn set_deepgram_cloud_token(token: String, expires_in: u64) -> Result<(), String> {
-    info!("🔑 Setting Deepgram cloud token (expires in {}s)", expires_in);
+pub async fn set_deepgram_proxy_config(proxy_base_url: String, jwt: String, expires_in: u64) -> Result<(), String> {
+    info!("Setting Deepgram proxy config (expires in {}s)", expires_in);
 
-    // Validate token
-    if token.is_empty() {
-        return Err("Token cannot be empty".to_string());
+    // Validate inputs
+    if proxy_base_url.is_empty() {
+        return Err("Proxy base URL cannot be empty".to_string());
+    }
+    if jwt.is_empty() {
+        return Err("JWT cannot be empty".to_string());
     }
 
-    // Cache the token
+    // Cache the config
     let expires_at = Instant::now() + Duration::from_secs(expires_in);
 
-    let mut cache = CLOUD_TOKEN_CACHE.lock().map_err(|e| {
-        error!("Failed to lock cloud token cache: {}", e);
+    let mut cache = PROXY_CONFIG_CACHE.lock().map_err(|e| {
+        error!("Failed to lock proxy config cache: {}", e);
         format!("Internal error: {}", e)
     })?;
 
-    *cache = Some(CachedToken {
-        token,
+    *cache = Some(CachedProxyConfig {
+        proxy_base_url,
+        jwt,
         expires_at,
     });
 
-    info!("✅ Cloud token cached successfully");
+    info!("Proxy config cached successfully");
     Ok(())
 }
 
-/// Get the cached cloud proxy token if valid
+/// Get the cached proxy configuration if valid
 #[tauri::command]
-pub async fn get_deepgram_cloud_token() -> Result<Option<DeepgramCloudToken>, String> {
-    let cache = CLOUD_TOKEN_CACHE.lock().map_err(|e| {
-        error!("Failed to lock cloud token cache: {}", e);
+pub async fn get_deepgram_proxy_config() -> Result<Option<DeepgramProxyConfig>, String> {
+    let cache = PROXY_CONFIG_CACHE.lock().map_err(|e| {
+        error!("Failed to lock proxy config cache: {}", e);
         format!("Internal error: {}", e)
     })?;
 
     match &*cache {
         Some(cached) => {
             let now = Instant::now();
-            if cached.expires_at > now + Duration::from_secs(TOKEN_REFRESH_BUFFER_SECS) {
+            if cached.expires_at > now + Duration::from_secs(CONFIG_REFRESH_BUFFER_SECS) {
                 let expires_in = cached.expires_at.duration_since(now).as_secs();
-                Ok(Some(DeepgramCloudToken {
-                    token: cached.token.clone(),
+                Ok(Some(DeepgramProxyConfig {
+                    proxy_base_url: cached.proxy_base_url.clone(),
+                    jwt: cached.jwt.clone(),
                     expires_in,
                 }))
             } else {
-                // Token expired or about to expire
-                warn!("🔄 Cloud token expired or about to expire");
+                // Config expired or about to expire
+                warn!("Proxy config expired or about to expire");
                 Ok(None)
             }
         }
@@ -99,29 +107,29 @@ pub async fn get_deepgram_cloud_token() -> Result<Option<DeepgramCloudToken>, St
     }
 }
 
-/// Check if a valid cloud token is available
+/// Check if a valid proxy configuration is available
 #[tauri::command]
-pub async fn has_valid_deepgram_cloud_token() -> bool {
-    let cache = match CLOUD_TOKEN_CACHE.lock() {
+pub async fn has_valid_deepgram_proxy_config() -> bool {
+    let cache = match PROXY_CONFIG_CACHE.lock() {
         Ok(c) => c,
         Err(_) => return false,
     };
 
     match &*cache {
         Some(cached) => {
-            cached.expires_at > Instant::now() + Duration::from_secs(TOKEN_REFRESH_BUFFER_SECS)
+            cached.expires_at > Instant::now() + Duration::from_secs(CONFIG_REFRESH_BUFFER_SECS)
         }
         None => false,
     }
 }
 
-/// Clear the cached cloud token (e.g., on logout)
+/// Clear the cached proxy configuration (e.g., on logout)
 #[tauri::command]
-pub async fn clear_deepgram_cloud_token() -> Result<(), String> {
-    info!("🗑️ Clearing Deepgram cloud token cache");
+pub async fn clear_deepgram_proxy_config() -> Result<(), String> {
+    info!("Clearing Deepgram proxy config cache");
 
-    let mut cache = CLOUD_TOKEN_CACHE.lock().map_err(|e| {
-        error!("Failed to lock cloud token cache: {}", e);
+    let mut cache = PROXY_CONFIG_CACHE.lock().map_err(|e| {
+        error!("Failed to lock proxy config cache: {}", e);
         format!("Internal error: {}", e)
     })?;
 
@@ -133,21 +141,22 @@ pub async fn clear_deepgram_cloud_token() -> Result<(), String> {
 // INTERNAL FUNCTIONS (for use within Rust code)
 // ============================================================================
 
-/// Get the current cloud token if valid (for internal use)
-/// Returns None if no token or token is expired
-pub fn get_cached_cloud_token() -> Option<String> {
-    let cache = CLOUD_TOKEN_CACHE.lock().ok()?;
+/// Get the current proxy config if valid (for internal use)
+/// Returns None if no config or config is expired
+/// Returns Some((proxy_base_url, jwt)) if valid
+pub fn get_cached_proxy_config() -> Option<(String, String)> {
+    let cache = PROXY_CONFIG_CACHE.lock().ok()?;
 
     cache.as_ref().and_then(|cached| {
-        if cached.expires_at > Instant::now() + Duration::from_secs(TOKEN_REFRESH_BUFFER_SECS) {
-            Some(cached.token.clone())
+        if cached.expires_at > Instant::now() + Duration::from_secs(CONFIG_REFRESH_BUFFER_SECS) {
+            Some((cached.proxy_base_url.clone(), cached.jwt.clone()))
         } else {
             None
         }
     })
 }
 
-/// Check if cloud token is available and valid (for internal use)
-pub fn has_cached_cloud_token() -> bool {
-    get_cached_cloud_token().is_some()
+/// Check if proxy config is available and valid (for internal use)
+pub fn has_cached_proxy_config() -> bool {
+    get_cached_proxy_config().is_some()
 }

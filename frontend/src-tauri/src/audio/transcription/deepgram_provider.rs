@@ -57,12 +57,10 @@ struct DeepgramAlternative {
 
 #[derive(Debug, Clone)]
 pub struct DeepgramConfig {
-    /// User's own API key (long-lived, stored in settings)
-    pub api_key: String,
-    /// Temporary token from cloud proxy (short-lived, ~5 min TTL)
-    pub cloud_token: Option<String>,
-    /// Whether to use cloud proxy token instead of user's API key
-    pub use_cloud_proxy: bool,
+    /// Base URL of the Cloudflare Worker proxy (e.g., "wss://maity-deepgram-proxy.jagv-1390.workers.dev")
+    pub proxy_base_url: Option<String>,
+    /// JWT token for authenticating with the proxy (short-lived, ~5 min TTL)
+    pub jwt: Option<String>,
     pub model: String,
     pub language: String,
     pub encoding: String,
@@ -75,9 +73,8 @@ pub struct DeepgramConfig {
 impl Default for DeepgramConfig {
     fn default() -> Self {
         Self {
-            api_key: String::new(),
-            cloud_token: None,
-            use_cloud_proxy: false,
+            proxy_base_url: None,
+            jwt: None,
             model: "nova-3".to_string(),
             language: "es-419".to_string(), // Latin American Spanish by default
             encoding: "linear16".to_string(),
@@ -133,18 +130,11 @@ pub struct DeepgramRealtimeTranscriber {
 }
 
 impl DeepgramRealtimeTranscriber {
-    /// Create a new Deepgram transcriber with the given API key
-    pub fn new(api_key: String) -> Self {
+    /// Create a new Deepgram transcriber using Cloudflare Worker proxy
+    pub fn with_proxy(proxy_base_url: String, jwt: String) -> Self {
         let mut config = DeepgramConfig::default();
-        config.api_key = api_key;
-        Self::with_config(config)
-    }
-
-    /// Create a new Deepgram transcriber using cloud proxy token
-    pub fn with_cloud_token(token: String) -> Self {
-        let mut config = DeepgramConfig::default();
-        config.cloud_token = Some(token);
-        config.use_cloud_proxy = true;
+        config.proxy_base_url = Some(proxy_base_url);
+        config.jwt = Some(jwt);
         Self::with_config(config)
     }
 
@@ -179,15 +169,9 @@ impl DeepgramRealtimeTranscriber {
         self.config.language = language;
     }
 
-    /// Update the cloud proxy token (for token refresh)
-    pub fn set_cloud_token(&mut self, token: String) {
-        self.config.cloud_token = Some(token);
-        self.config.use_cloud_proxy = true;
-    }
-
-    /// Check if using cloud proxy
-    pub fn is_using_cloud_proxy(&self) -> bool {
-        self.config.use_cloud_proxy
+    /// Update the proxy JWT (for token refresh)
+    pub fn set_proxy_jwt(&mut self, jwt: String) {
+        self.config.jwt = Some(jwt);
     }
 
     /// Set the event emitter function for streaming mode.
@@ -259,43 +243,34 @@ impl DeepgramRealtimeTranscriber {
         info!("Deepgram persistent stream closed");
     }
 
-    /// Get the effective authentication token (cloud token or API key)
-    fn get_auth_token(&self) -> Option<&str> {
-        if self.config.use_cloud_proxy {
-            self.config.cloud_token.as_deref()
-        } else if !self.config.api_key.is_empty() {
-            Some(&self.config.api_key)
-        } else {
-            None
-        }
+    /// Check if proxy config is ready (both proxy_base_url and jwt are set)
+    fn is_proxy_configured(&self) -> bool {
+        self.config.proxy_base_url.is_some() && self.config.jwt.is_some()
     }
 
-    /// Get the authorization header format based on token type
-    fn get_auth_header(&self) -> Option<String> {
-        self.get_auth_token().map(|token| {
-            format!("Token {}", token)
-        })
-    }
+    /// Build the WebSocket URL targeting the Cloudflare Worker proxy.
+    /// The JWT and Deepgram params are passed as query parameters.
+    fn build_websocket_url(&self, language_override: Option<&str>) -> Option<String> {
+        let proxy_base_url = self.config.proxy_base_url.as_ref()?;
+        let jwt = self.config.jwt.as_ref()?;
 
-    /// Build the WebSocket URL with query parameters
-    fn build_websocket_url(&self, language_override: Option<&str>) -> String {
         let language = language_override.unwrap_or(&self.config.language);
 
-        let language_param = match language {
+        let language_value = match language {
             "auto-translate" | "auto" | "detect" => {
                 println!("[DEEPGRAM] auto-translate detected, using default language (es)");
-                "language=es".to_string()
+                "es".to_string()
             }
             lang => {
                 println!("[DEEPGRAM] Using language: {}", lang);
-                format!("language={}", lang)
+                lang.to_string()
             }
         };
 
-        format!(
-            "wss://api.deepgram.com/v1/listen?\
+        Some(format!(
+            "{}?token={}&\
             model={}&\
-            {}&\
+            language={}&\
             encoding={}&\
             sample_rate={}&\
             channels={}&\
@@ -303,14 +278,16 @@ impl DeepgramRealtimeTranscriber {
             interim_results={}&\
             endpointing=200&\
             vad_events=true",
+            proxy_base_url,
+            jwt,
             self.config.model,
-            language_param,
+            language_value,
             self.config.encoding,
             self.config.sample_rate,
             self.config.channels,
             self.config.punctuate,
             self.config.interim_results
-        )
+        ))
     }
 
     /// Convert f32 audio samples to 16-bit PCM bytes
@@ -370,19 +347,22 @@ impl DeepgramRealtimeTranscriber {
             .unwrap_or_else(|| "unknown".to_string())
             .to_uppercase();
 
-        let auth_header = self.get_auth_header().ok_or_else(|| {
+        let url = self.build_websocket_url(language).ok_or_else(|| {
             TranscriptionError::EngineFailed(
-                "Deepgram authentication not configured (no API key or cloud token)".to_string(),
+                "Deepgram proxy not configured (no proxy_base_url or jwt)".to_string(),
             )
         })?;
+        debug!("Deepgram proxy WebSocket URL: {}", url.split('?').next().unwrap_or(&url));
 
-        let url = self.build_websocket_url(language);
-        debug!("Deepgram WebSocket URL: {}", url.split('?').next().unwrap_or(&url));
+        // Extract host from proxy URL for the Host header
+        let host = url::Url::parse(&url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_string()))
+            .unwrap_or_else(|| "localhost".to_string());
 
         let request = Request::builder()
             .uri(&url)
-            .header("Authorization", &auth_header)
-            .header("Host", "api.deepgram.com")
+            .header("Host", &host)
             .header("Upgrade", "websocket")
             .header("Connection", "Upgrade")
             .header("Sec-WebSocket-Version", "13")
@@ -712,12 +692,12 @@ impl TranscriptionProvider for DeepgramRealtimeTranscriber {
     }
 
     async fn is_model_loaded(&self) -> bool {
-        // Deepgram is cloud-based, "ready" if API key or cloud token is configured
-        self.get_auth_token().is_some()
+        // Deepgram via proxy: "ready" if proxy config is set
+        self.is_proxy_configured()
     }
 
     async fn get_current_model(&self) -> Option<String> {
-        if self.get_auth_token().is_some() {
+        if self.is_proxy_configured() {
             Some(self.config.model.clone())
         } else {
             None
@@ -779,6 +759,8 @@ mod tests {
         assert_eq!(config.model, "nova-3");
         assert_eq!(config.language, "es-419");
         assert_eq!(config.sample_rate, 16000);
+        assert!(config.proxy_base_url.is_none());
+        assert!(config.jwt.is_none());
     }
 
     #[test]
@@ -808,10 +790,15 @@ mod tests {
     }
 
     #[test]
-    fn test_websocket_url_building() {
-        let transcriber = DeepgramRealtimeTranscriber::new("test_api_key".to_string());
-        let url = transcriber.build_websocket_url(None);
+    fn test_websocket_url_building_with_proxy() {
+        let transcriber = DeepgramRealtimeTranscriber::with_proxy(
+            "wss://maity-deepgram-proxy.jagv-1390.workers.dev".to_string(),
+            "test_jwt_token".to_string(),
+        );
+        let url = transcriber.build_websocket_url(None).unwrap();
 
+        assert!(url.starts_with("wss://maity-deepgram-proxy.jagv-1390.workers.dev?"));
+        assert!(url.contains("token=test_jwt_token"));
         assert!(url.contains("model=nova-3"));
         assert!(url.contains("language=es-419"));
         assert!(url.contains("sample_rate=16000"));
@@ -820,33 +807,52 @@ mod tests {
 
     #[test]
     fn test_websocket_url_with_language_override() {
-        let transcriber = DeepgramRealtimeTranscriber::new("test_api_key".to_string());
-        let url = transcriber.build_websocket_url(Some("en"));
+        let transcriber = DeepgramRealtimeTranscriber::with_proxy(
+            "wss://proxy.example.com".to_string(),
+            "jwt".to_string(),
+        );
+        let url = transcriber.build_websocket_url(Some("en")).unwrap();
 
         assert!(url.contains("language=en"));
     }
 
+    #[test]
+    fn test_websocket_url_none_without_config() {
+        let transcriber = DeepgramRealtimeTranscriber::with_config(DeepgramConfig::default());
+        let url = transcriber.build_websocket_url(None);
+        assert!(url.is_none());
+    }
+
     #[tokio::test]
-    async fn test_model_loaded_without_key() {
-        let transcriber = DeepgramRealtimeTranscriber::new(String::new());
+    async fn test_model_loaded_without_proxy() {
+        let transcriber = DeepgramRealtimeTranscriber::with_config(DeepgramConfig::default());
         assert!(!transcriber.is_model_loaded().await);
     }
 
     #[tokio::test]
-    async fn test_model_loaded_with_key() {
-        let transcriber = DeepgramRealtimeTranscriber::new("test_key".to_string());
+    async fn test_model_loaded_with_proxy() {
+        let transcriber = DeepgramRealtimeTranscriber::with_proxy(
+            "wss://proxy.example.com".to_string(),
+            "jwt".to_string(),
+        );
         assert!(transcriber.is_model_loaded().await);
     }
 
     #[tokio::test]
     async fn test_provider_name() {
-        let transcriber = DeepgramRealtimeTranscriber::new("test_key".to_string());
+        let transcriber = DeepgramRealtimeTranscriber::with_proxy(
+            "wss://proxy.example.com".to_string(),
+            "jwt".to_string(),
+        );
         assert_eq!(transcriber.provider_name(), "Deepgram");
     }
 
     #[tokio::test]
     async fn test_audio_too_short() {
-        let transcriber = DeepgramRealtimeTranscriber::new("test_key".to_string());
+        let transcriber = DeepgramRealtimeTranscriber::with_proxy(
+            "wss://proxy.example.com".to_string(),
+            "jwt".to_string(),
+        );
         let short_audio = vec![0.0f32; 100]; // Only 100 samples (< 1600 minimum)
 
         let result = transcriber.transcribe(short_audio, None).await;
@@ -855,7 +861,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_chunk_info_queue() {
-        let transcriber = DeepgramRealtimeTranscriber::new("test_key".to_string());
+        let transcriber = DeepgramRealtimeTranscriber::with_proxy(
+            "wss://proxy.example.com".to_string(),
+            "jwt".to_string(),
+        );
         transcriber.queue_chunk_info(0.0, 3.0, 3.0).await;
         transcriber.queue_chunk_info(3.0, 6.0, 3.0).await;
 

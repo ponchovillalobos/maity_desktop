@@ -485,11 +485,9 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
   - `enhance/*`: Mejoras de funcionalidades
   - `feat/*`: Funcionalidades nuevas
 
-## Deepgram Cloud Proxy (Transcripción en la Nube)
+## Deepgram via Cloudflare Worker Proxy (Transcripción en la Nube)
 
-El sistema de transcripción en la nube usa Deepgram como proveedor. **Los usuarios NO configuran su propia API key** - se usa la API key del proyecto via cloud proxy.
-
-> **Nota**: El endpoint `/v1/auth/grant` de Deepgram para generar tokens temporales requiere un plan de pago. En el plan gratuito, la Edge Function retorna la API key directamente (igual que hace OMI).
+El sistema de transcripción en la nube usa Deepgram como proveedor a través de un **Cloudflare Worker proxy**. **La API key de Deepgram nunca llega al cliente** — el proxy la mantiene del lado del servidor.
 
 ### Modelos y Idiomas Soportados
 
@@ -512,54 +510,58 @@ La configuración de modelo e idioma se guarda en la tabla `transcript_settings`
 ### Arquitectura
 
 ```
-┌─────────────────────┐     ┌──────────────────────────┐
-│   App Tauri/Rust    │────>│  Supabase Edge Function  │
-│                     │     │  (deepgram-token)        │
-│  1. Usuario inicia  │     │                          │
-│     grabación       │     │  2. Valida JWT Supabase  │
-│                     │<────│  3. Retorna API key      │
-│  4. Conecta a       │     └──────────────────────────┘
-│     Deepgram WS     │─────────────────────────────────>
-│     con API key     │                                 Deepgram WebSocket
-└─────────────────────┘
+┌─────────────────────┐     ┌──────────────────────────┐     ┌───────────────────┐
+│   App Tauri/Rust    │────>│  Vercel API              │     │ Cloudflare Worker │
+│                     │     │  GET /api/deepgram-token  │     │ (maity-deepgram-  │
+│  1. Usuario inicia  │     │                          │     │  proxy)           │
+│     grabación       │     │  2. Valida JWT Supabase  │     │                   │
+│                     │<────│  3. Retorna proxy URL +  │     │  5. Valida JWT    │
+│                     │     │     JWT (5 min TTL)       │     │  6. Conecta a     │
+│  4. Conecta WS al  │     └──────────────────────────┘     │     Deepgram      │
+│     Worker proxy    │─────────────────────────────────────>│  7. Relay bidirec.│
+│     con JWT como    │                                      │                   │
+│     query param     │<─────────────────────────────────────│  (transcripciones)│
+└─────────────────────┘                                      └───────────────────┘
 ```
 
 ### Flujo de Autenticación
 
 1. **Usuario inicia grabación** con provider "deepgram"
 2. **Frontend** (`useRecordingStart.ts`):
-   - Llama a `getDeepgramToken()` de `frontend/src/lib/deepgram.ts`
-   - Esto hace fetch a la Edge Function `deepgram-token` con el JWT de Supabase
-3. **Edge Function** (`supabase/functions/deepgram-token`):
-   - Valida el JWT del usuario
-   - Retorna la API key de Deepgram directamente (no llama a `/v1/auth/grant`)
-4. **Frontend** pasa el token a Rust via `set_deepgram_cloud_token`
-5. **Rust** (`engine.rs`) crea el transcriber con `DeepgramRealtimeTranscriber::with_cloud_token(token)`
-6. **Rust** conecta a Deepgram WebSocket con `Authorization: Token {api_key}`
+   - Llama a `getDeepgramProxyConfig()` de `frontend/src/lib/deepgram.ts`
+   - Esto hace GET a `https://www.maity.com.mx/api/deepgram-token` con el JWT de Supabase
+3. **Vercel API** (`/api/deepgram-token`):
+   - Valida el JWT del usuario via Supabase
+   - Genera un JWT de 5 minutos para el proxy
+   - Retorna `{ mode: "proxy", ws_url: "wss://proxy.workers.dev?token=JWT&...", config: {...} }`
+4. **Frontend** extrae `proxy_base_url` y `jwt` del `ws_url` y los pasa a Rust via `set_deepgram_proxy_config`
+5. **Rust** (`engine.rs`) crea el transcriber con `DeepgramRealtimeTranscriber::with_proxy(proxy_base_url, jwt)`
+6. **Rust** conecta al WebSocket del Worker con `?token=JWT&model=...&language=...` (sin header Authorization)
+7. **Worker** valida el JWT, conecta a Deepgram, y relay bidireccional de mensajes
 
 ### Archivos Relevantes
 
 | Archivo | Descripción |
 |---------|-------------|
-| `frontend/src/lib/deepgram.ts` | Cliente TypeScript para obtener tokens del cloud proxy |
-| `frontend/src/hooks/useRecordingStart.ts` | Hook que obtiene token antes de iniciar grabación |
-| `frontend/src-tauri/src/audio/transcription/deepgram_commands.rs` | Comandos Tauri para gestionar tokens en cache |
-| `frontend/src-tauri/src/audio/transcription/deepgram_provider.rs` | Proveedor de transcripción con soporte para cloud tokens |
+| `frontend/src/lib/deepgram.ts` | Cliente TypeScript para obtener proxy config de Vercel API |
+| `frontend/src/hooks/useRecordingStart.ts` | Hook que obtiene proxy config antes de iniciar grabación |
+| `frontend/src-tauri/src/audio/transcription/deepgram_commands.rs` | Comandos Tauri para gestionar proxy config en cache |
+| `frontend/src-tauri/src/audio/transcription/deepgram_provider.rs` | Proveedor de transcripción que conecta via proxy |
 | `frontend/src-tauri/src/audio/transcription/engine.rs` | Lógica de inicialización del motor de transcripción |
 
-### Configuración Requerida (Supabase)
+### Notas de Seguridad
 
-1. **Secret**: Configurar `DEEPGRAM_API_KEY` en Supabase Dashboard:
-   - Ir a Project Settings → Edge Functions → Secrets
-   - Agregar `DEEPGRAM_API_KEY` con la API key de Deepgram
-
-2. **Edge Function**: Ya desplegada como `deepgram-token` con `verify_jwt: true`
+- La API key de Deepgram **nunca** llega al cliente — solo existe en el Cloudflare Worker
+- El JWT tiene TTL de 5 minutos y se valida solo al conectar el WebSocket
+- Conexiones activas sobreviven más allá del TTL del JWT (validación solo al inicio)
+- Ambas conexiones WS (mic + system) usan el mismo JWT simultáneamente
+- Si hay reconexión después de expirar el JWT (>5 min), fallará gracefully
 
 ### Requisitos para el Usuario
 
 - Debe estar autenticado con Supabase (login con Google)
 - NO necesita configurar su propia API key de Deepgram
-- La API key se obtiene del cloud proxy en cada sesión (sin expiración)
+- La proxy config se obtiene automáticamente al iniciar grabación (TTL: 5 min)
 
 ## Referencia de Archivos Clave
 

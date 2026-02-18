@@ -1,16 +1,25 @@
 /**
- * Deepgram Token Service
+ * Deepgram Proxy Config Service
  *
- * Provides temporary Deepgram API tokens for authenticated users.
- * Tokens are generated via a Supabase Edge Function that holds the actual API key.
- * This allows users to use cloud transcription without configuring their own API key.
+ * Provides proxy configuration for Deepgram transcription via Cloudflare Worker proxy.
+ * The Deepgram API key never reaches the client — the proxy holds it server-side.
+ *
+ * Flow: Desktop → Vercel GET /api/deepgram-token → receives proxy URL + JWT (5 min)
+ *       → connects to Cloudflare Worker → Worker connects to Deepgram
  */
 
 import { supabase } from './supabase'
 
-export interface DeepgramTokenResponse {
-  token: string
-  expires_in: number
+export interface DeepgramProxyConfigResponse {
+  mode: string
+  ws_url: string
+  config: Record<string, unknown>
+}
+
+export interface DeepgramProxyConfig {
+  proxyBaseUrl: string
+  jwt: string
+  expiresIn: number
 }
 
 export interface DeepgramTokenError {
@@ -18,20 +27,19 @@ export interface DeepgramTokenError {
   details?: string
 }
 
-// Cache for the current token
-let cachedToken: DeepgramTokenResponse | null = null
-let tokenExpiresAt: number = 0
+// Cache for the current proxy config
+let cachedConfig: DeepgramProxyConfig | null = null
+let configExpiresAt: number = 0
 
-// Supabase project URL (same as used in supabase.ts)
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nhlrtflkxoojvhbyocet.supabase.co'
+// JWT TTL in seconds (5 minutes)
+const JWT_TTL_SECS = 300
 
 /**
- * Get a temporary Deepgram token for streaming transcription.
- * Tokens are cached until they expire (with a 30-second buffer).
+ * Get proxy configuration for Deepgram streaming transcription.
+ * Configs are cached until they expire (with a 30-second buffer).
  *
- * @returns Promise<DeepgramTokenResponse> - Token and expiration info
- * @throws Error if user is not authenticated or token generation fails
+ * @returns Promise<DeepgramProxyConfig> - Proxy base URL, JWT, and expiration info
+ * @throws DeepgramError if user is not authenticated or config generation fails
  */
 export type DeepgramErrorType = 'auth' | 'network' | 'server' | 'unknown'
 
@@ -45,12 +53,12 @@ export class DeepgramError extends Error {
   }
 }
 
-export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
-  // Check if we have a valid cached token (with 30s buffer before expiry)
+export async function getDeepgramProxyConfig(): Promise<DeepgramProxyConfig> {
+  // Check if we have a valid cached config (with 30s buffer before expiry)
   const now = Date.now()
-  if (cachedToken && tokenExpiresAt > now + 30000) {
-    console.log('[deepgram] Using cached token, expires in', Math.round((tokenExpiresAt - now) / 1000), 's')
-    return cachedToken
+  if (cachedConfig && configExpiresAt > now + 30000) {
+    console.log('[deepgram] Using cached proxy config, expires in', Math.round((configExpiresAt - now) / 1000), 's')
+    return cachedConfig
   }
 
   // Get current session
@@ -72,28 +80,24 @@ export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
     throw new DeepgramError('Debes iniciar sesión para grabar', 'auth')
   }
 
-  // Helper to call the edge function with a given access token
-  const fetchToken = async (accessToken: string): Promise<Response> => {
-    return fetch(`${SUPABASE_URL}/functions/v1/deepgram-token`, {
-      method: 'POST',
+  // Helper to call the Vercel API endpoint
+  const fetchConfig = async (accessToken: string): Promise<Response> => {
+    return fetch('https://www.maity.com.mx/api/deepgram-token', {
+      method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
       },
     })
   }
 
-  console.log('[deepgram] Requesting new token from edge function...')
-  console.log('[deepgram] URL:', `${SUPABASE_URL}/functions/v1/deepgram-token`)
+  console.log('[deepgram] Requesting proxy config from Vercel API...')
   console.log('[deepgram] User ID:', session.user?.id)
-  console.log('[deepgram] Token present:', !!session.access_token)
-  console.log('[deepgram] Token length:', session.access_token?.length || 0)
 
   let response: Response
   try {
-    response = await fetchToken(session.access_token)
+    response = await fetchConfig(session.access_token)
   } catch (fetchError) {
-    console.error('[deepgram] Network error calling edge function:', fetchError)
+    console.error('[deepgram] Network error calling Vercel API:', fetchError)
     throw new DeepgramError(
       'Error de conexión. Verifica tu internet e intenta de nuevo.',
       'network'
@@ -117,7 +121,7 @@ export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
 
     console.log('[deepgram] Session refreshed, retrying with new token...')
     try {
-      response = await fetchToken(refreshData.session.access_token)
+      response = await fetchConfig(refreshData.session.access_token)
     } catch (fetchError) {
       console.error('[deepgram] Network error on retry:', fetchError)
       throw new DeepgramError(
@@ -167,32 +171,50 @@ export async function getDeepgramToken(): Promise<DeepgramTokenResponse> {
     )
   }
 
-  const tokenData: DeepgramTokenResponse = await response.json()
+  const data: DeepgramProxyConfigResponse = await response.json()
 
-  // Cache the token
-  cachedToken = tokenData
-  tokenExpiresAt = now + tokenData.expires_in * 1000
+  // Extract proxy base URL and JWT from ws_url
+  // ws_url format: "wss://proxy.workers.dev?token=JWT&model=...&language=..."
+  const wsUrl = new URL(data.ws_url)
+  const jwt = wsUrl.searchParams.get('token')
+  if (!jwt) {
+    throw new DeepgramError('Respuesta del servidor inválida: falta token en ws_url', 'server')
+  }
 
-  console.log('[deepgram] New token obtained, expires in', tokenData.expires_in, 's')
+  // Build proxy base URL (scheme + host + pathname, without query params)
+  const proxyBaseUrl = `${wsUrl.protocol}//${wsUrl.host}${wsUrl.pathname}`
 
-  return tokenData
+  const config: DeepgramProxyConfig = {
+    proxyBaseUrl,
+    jwt,
+    expiresIn: JWT_TTL_SECS,
+  }
+
+  // Cache the config
+  cachedConfig = config
+  configExpiresAt = now + JWT_TTL_SECS * 1000
+
+  console.log('[deepgram] Proxy config obtained, expires in', JWT_TTL_SECS, 's')
+  console.log('[deepgram] Proxy base URL:', proxyBaseUrl)
+
+  return config
 }
 
 /**
- * Clear the cached token.
- * Call this when the user logs out or when you need to force a new token.
+ * Clear the cached proxy config.
+ * Call this when the user logs out or when you need to force a new config.
  */
-export function clearDeepgramTokenCache(): void {
-  cachedToken = null
-  tokenExpiresAt = 0
-  console.log('[deepgram] Token cache cleared')
+export function clearDeepgramProxyCache(): void {
+  cachedConfig = null
+  configExpiresAt = 0
+  console.log('[deepgram] Proxy config cache cleared')
 }
 
 /**
- * Check if a valid token is currently cached.
+ * Check if a valid proxy config is currently cached.
  *
- * @returns boolean - True if a valid token is available
+ * @returns boolean - True if a valid config is available
  */
-export function hasValidCachedToken(): boolean {
-  return cachedToken !== null && tokenExpiresAt > Date.now() + 30000
+export function hasValidCachedProxyConfig(): boolean {
+  return cachedConfig !== null && configExpiresAt > Date.now() + 30000
 }

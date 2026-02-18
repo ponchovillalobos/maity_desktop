@@ -857,11 +857,11 @@ pub fn run() {
             logging::commands::clear_old_logs,
             // Health check
             health_check,
-            // Deepgram cloud token commands
-            audio::transcription::deepgram_commands::set_deepgram_cloud_token,
-            audio::transcription::deepgram_commands::get_deepgram_cloud_token,
-            audio::transcription::deepgram_commands::has_valid_deepgram_cloud_token,
-            audio::transcription::deepgram_commands::clear_deepgram_cloud_token,
+            // Deepgram proxy config commands
+            audio::transcription::deepgram_commands::set_deepgram_proxy_config,
+            audio::transcription::deepgram_commands::get_deepgram_proxy_config,
+            audio::transcription::deepgram_commands::has_valid_deepgram_proxy_config,
+            audio::transcription::deepgram_commands::clear_deepgram_proxy_config,
             // OAuth localhost server
             auth_server::start_oauth_server,
             // System settings commands

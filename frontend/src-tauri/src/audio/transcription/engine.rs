@@ -234,16 +234,16 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
         "deepgram" => {
             info!("🔍 Validating Deepgram cloud provider...");
 
-            // Check if we have a valid cloud token (obtained from edge function proxy)
-            if super::deepgram_commands::has_cached_cloud_token() {
-                info!("✅ Deepgram cloud token disponible, transcripción en la nube lista");
+            // Check if we have a valid proxy config (obtained from Vercel API)
+            if super::deepgram_commands::has_cached_proxy_config() {
+                info!("✅ Deepgram proxy config disponible, transcripción en la nube lista");
                 Ok(())
             } else {
-                // No cloud token available - user needs to be authenticated
-                warn!("⚠️ No hay token de Deepgram disponible");
-                warn!("   El frontend debe obtener un token del cloud proxy antes de iniciar la grabación");
+                // No proxy config available - user needs to be authenticated
+                warn!("⚠️ No hay configuración de proxy Deepgram disponible");
+                warn!("   El frontend debe obtener la configuración del proxy antes de iniciar la grabación");
                 Err(
-                    "Token de Deepgram no disponible. Por favor asegúrate de estar autenticado con tu cuenta de Google.".to_string()
+                    "Configuración de Deepgram no disponible. Por favor asegúrate de estar autenticado con tu cuenta de Google.".to_string()
                 )
             }
         }
@@ -355,15 +355,15 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
             }
         }
         "deepgram" => {
-            info!("Initializing Deepgram cloud transcription engine (dual persistent streaming)");
-            println!("[ENGINE] Initializing Deepgram dual persistent streaming engine (mic + sys)");
+            info!("Initializing Deepgram cloud transcription engine (dual persistent streaming via proxy)");
+            println!("[ENGINE] Initializing Deepgram dual persistent streaming engine via proxy (mic + sys)");
 
-            // Get cloud token from cache (should have been set by frontend before starting recording)
-            let cloud_token = super::deepgram_commands::get_cached_cloud_token();
+            // Get proxy config from cache (should have been set by frontend before starting recording)
+            let proxy_config = super::deepgram_commands::get_cached_proxy_config();
 
-            match cloud_token {
-                Some(token) => {
-                    info!("Deepgram cloud token found");
+            match proxy_config {
+                Some((proxy_base_url, jwt)) => {
+                    info!("Deepgram proxy config found");
 
                     // Apply model from config if specified, otherwise use nova-3
                     let model = if !config.model.is_empty() && config.model != "deepgram" {
@@ -381,12 +381,12 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                     info!("Setting Deepgram model={}, language={}", model, language);
 
                     // Create TWO Deepgram instances: one for mic, one for system audio
-                    let mut mic_dg = DeepgramRealtimeTranscriber::with_cloud_token(token.clone());
+                    let mut mic_dg = DeepgramRealtimeTranscriber::with_proxy(proxy_base_url.clone(), jwt.clone());
                     mic_dg.set_source_label("user".to_string());
                     mic_dg.set_model(model.clone());
                     mic_dg.set_language(language.clone());
 
-                    let mut sys_dg = DeepgramRealtimeTranscriber::with_cloud_token(token);
+                    let mut sys_dg = DeepgramRealtimeTranscriber::with_proxy(proxy_base_url, jwt);
                     sys_dg.set_source_label("interlocutor".to_string());
                     sys_dg.set_model(model.clone());
                     sys_dg.set_language(language);
@@ -443,9 +443,9 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                     Ok(TranscriptionEngine::Deepgram { mic: mic_arc, sys: sys_arc })
                 }
                 None => {
-                    error!("No Deepgram token available");
+                    error!("No Deepgram proxy config available");
                     Err(
-                        "Token de Deepgram no disponible. Por favor asegúrate de estar autenticado con tu cuenta de Google.".to_string()
+                        "Configuración de Deepgram no disponible. Por favor asegúrate de estar autenticado con tu cuenta de Google.".to_string()
                     )
                 }
             }

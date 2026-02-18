@@ -16,12 +16,12 @@ pub use whisper_provider::WhisperProvider;
 pub use parakeet_provider::ParakeetProvider;
 pub use deepgram_provider::{DeepgramRealtimeTranscriber, DeepgramConfig};
 pub use deepgram_commands::{
-    set_deepgram_cloud_token,
-    get_deepgram_cloud_token,
-    has_valid_deepgram_cloud_token,
-    clear_deepgram_cloud_token,
-    get_cached_cloud_token,
-    has_cached_cloud_token,
+    set_deepgram_proxy_config,
+    get_deepgram_proxy_config,
+    has_valid_deepgram_proxy_config,
+    clear_deepgram_proxy_config,
+    get_cached_proxy_config,
+    has_cached_proxy_config,
 };
 pub use engine::{
     TranscriptionEngine,

@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Try to fetch existing maity.users record
         const { data, error: fetchError } = await supabase
           .from('users')
-          .select('id, auth_id, name, email, status, created_at, updated_at')
+          .select('id, auth_id, first_name, last_name, email, status, created_at, updated_at')
           .eq('auth_id', authUser.id)
           .single()
 
@@ -87,11 +87,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // If not found (PGRST116 = no rows), create a new record
         if (fetchError && fetchError.code === 'PGRST116') {
-          const userName =
+          const fullName =
             authUser.user_metadata?.full_name ||
             authUser.user_metadata?.name ||
             authUser.email?.split('@')[0] ||
             ''
+          const nameParts = fullName.split(' ')
+          const firstName = nameParts[0] || ''
+          const lastName = nameParts.slice(1).join(' ') || null
 
           const email = authUser.email || ''
           const domain = email.split('@')[1]?.toLowerCase() || ''
@@ -102,11 +105,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .from('users')
             .insert({
               auth_id: authUser.id,
-              name: userName,
+              first_name: firstName,
+              last_name: lastName,
               email: authUser.email || null,
               status: initialStatus,
             })
-            .select('id, auth_id, name, email, status, created_at, updated_at')
+            .select('id, auth_id, first_name, last_name, email, status, created_at, updated_at')
             .single()
 
           if (createError) {
@@ -115,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.log('[Auth] Unique constraint hit (concurrent insert), re-fetching user')
               const { data: existingUser, error: refetchError } = await supabase
                 .from('users')
-                .select('id, auth_id, name, email, status, created_at, updated_at')
+                .select('id, auth_id, first_name, last_name, email, status, created_at, updated_at')
                 .eq('auth_id', authUser.id)
                 .single()
 

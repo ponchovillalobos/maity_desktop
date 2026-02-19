@@ -172,17 +172,17 @@ export function useGamifiedDashboardData(): GamifiedDashboardData {
 
   const ranking = useMemo(() => {
     const r = [...MOCK_RANKING];
-    if (maityUser?.name) {
+    if (maityUser?.first_name) {
       const currentIdx = r.findIndex(e => e.isCurrentUser);
       if (currentIdx >= 0) {
-        r[currentIdx] = { ...r[currentIdx], name: maityUser.name.split(' ')[0] };
+        r[currentIdx] = { ...r[currentIdx], name: maityUser.first_name };
       }
     }
     return r;
-  }, [maityUser?.name]);
+  }, [maityUser?.first_name]);
 
   return {
-    userName: maityUser?.name || 'Usuario',
+    userName: maityUser?.first_name || 'Usuario',
     totalXP: 170,
     streakDays,
     score,

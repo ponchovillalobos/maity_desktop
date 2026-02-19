@@ -57,6 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [maityUserError, setMaityUserError] = useState<string | null>(null)
   const isHandlingCallback = useRef(false)
+  const isSigningOut = useRef(false)
   const fetchMaityUserPromise = useRef<Promise<void> | null>(null)
 
   const isAuthenticated = !!session && !!user
@@ -246,6 +247,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[Auth] Auth state changed:', event, 'session:', !!newSession)
 
         if (!isMounted) return
+        if (isSigningOut.current) {
+          console.log('[Auth] Ignoring auth state change during sign out')
+          return
+        }
 
         setSession(newSession)
         setUser(newSession?.user ?? null)
@@ -528,29 +533,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     console.log('[Auth] signOut called')
+    isSigningOut.current = true
     try {
-      // Reset flags BEFORE calling signOut to ensure clean state
       isHandlingCallback.current = false
       setError(null)
       setMaityUserError(null)
 
+      // Limpiar estado local PRIMERO (inmediatamente, antes del async signOut)
+      setSession(null)
+      setUser(null)
+      setMaityUser(null)
+
+      // Luego hacer el signOut en Supabase (puede fallar si ya no hay sesión válida)
       const { error } = await supabase.auth.signOut()
       if (error) {
         console.error('[Auth] Supabase signOut error:', error)
       }
-
-      // Siempre limpiar estado local (no depender del listener onAuthStateChange)
-      // ya que puede no dispararse si la sesión ya era inválida
-      console.log('[Auth] Clearing local auth state')
-      setSession(null)
-      setUser(null)
-      setMaityUser(null)
+      console.log('[Auth] Signed out successfully')
     } catch (err) {
       console.error('[Auth] Error signing out:', err)
-      // Limpiar estado manualmente en caso de excepción
-      setSession(null)
-      setUser(null)
-      setMaityUser(null)
+    } finally {
+      isSigningOut.current = false
     }
   }, [])
 

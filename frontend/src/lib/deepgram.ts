@@ -43,23 +43,30 @@ export class DeepgramError extends Error {
  * @throws DeepgramError if user is not authenticated or config generation fails
  */
 export async function getDeepgramProxyConfig(): Promise<DeepgramProxyConfig> {
-  // Get current session
-  const {
+  // Get session, refreshing proactively if token is expired or about to expire
+  let {
     data: { session },
     error: sessionError,
   } = await supabase.auth.getSession()
 
-  if (sessionError) {
-    console.error('[deepgram] Session error:', sessionError.message)
-    throw new DeepgramError(
-      `Error de sesión: ${sessionError.message}. Intenta cerrar sesión y volver a iniciar.`,
-      'auth'
-    )
+  if (sessionError || !session) {
+    console.error('[deepgram] No active session:', sessionError?.message)
+    throw new DeepgramError('Debes iniciar sesión para grabar', 'auth')
   }
 
-  if (!session) {
-    console.error('[deepgram] No active session - user must be logged in')
-    throw new DeepgramError('Debes iniciar sesión para grabar', 'auth')
+  // Proactively refresh if token is expired or expires within 60s
+  const expiresAt = session.expires_at // Unix timestamp in seconds
+  if (expiresAt && expiresAt < Math.floor(Date.now() / 1000) + 60) {
+    console.log('[deepgram] Token expired or about to expire, refreshing...')
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+    if (refreshError || !refreshData.session) {
+      throw new DeepgramError(
+        'Tu sesión ha expirado. Cierra sesión y vuelve a iniciar.',
+        'auth'
+      )
+    }
+    session = refreshData.session
+    console.log('[deepgram] Token refreshed successfully')
   }
 
   console.log('[deepgram] Fetching proxy config via Rust backend...')
@@ -89,28 +96,6 @@ export async function getDeepgramProxyConfig(): Promise<DeepgramProxyConfig> {
       const errorType = errorStr.substring(0, colonIndex) as DeepgramErrorType
       const message = errorStr.substring(colonIndex + 1)
       if (['auth', 'network', 'server', 'unknown'].includes(errorType)) {
-        // If auth error, try refreshing session and retry once
-        if (errorType === 'auth') {
-          console.warn('[deepgram] Auth error - attempting session refresh...')
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-
-          if (!refreshError && refreshData.session) {
-            console.log('[deepgram] Session refreshed, retrying...')
-            try {
-              const retryResult = await invoke<{ proxy_base_url: string; jwt: string; expires_in: number }>(
-                'fetch_deepgram_proxy_config',
-                { accessToken: refreshData.session.access_token }
-              )
-              return {
-                proxyBaseUrl: retryResult.proxy_base_url,
-                jwt: retryResult.jwt,
-                expiresIn: retryResult.expires_in,
-              }
-            } catch (retryErr) {
-              console.error('[deepgram] Retry after refresh also failed:', retryErr)
-            }
-          }
-        }
         throw new DeepgramError(message, errorType)
       }
     }

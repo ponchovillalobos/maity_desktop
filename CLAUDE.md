@@ -681,9 +681,9 @@ git checkout -    # Volver a la rama de trabajo
 
 **Build obligatorio después de cada cambio**:
 ```bash
-cd frontend && pnpm run tauri:build     # OBLIGATORIO - Build integrado Tauri
+cd frontend && pnpm run tauri:build:debug     # OBLIGATORIO - Build integrado Tauri (debug)
 ```
-Este comando ejecuta la cadena completa: `pnpm build` (Next.js) → `cargo build --release` (Rust) → empaqueta frontend + backend en un ejecutable funcional con instaladores MSI/NSIS.
+Este comando ejecuta la cadena completa: `pnpm build` (Next.js) → `cargo build` (Rust, debug) → empaqueta frontend + backend en un ejecutable funcional. Es más rápido que el build release y permite al usuario probar el .exe directamente.
 
 **Criterio de éxito del build**: El proceso DEBE terminar con exit code 0. Si termina con exit code 1 o cualquier otro error, el build NO pasó y se debe corregir antes de entregar.
 
@@ -701,13 +701,18 @@ Este comando ejecuta la cadena completa: `pnpm build` (Next.js) → `cargo build
 cd frontend && pnpm run tauri:dev       # Inicia servidor Next.js + backend Rust en modo debug
 ```
 
-**Ubicación de los artefactos generados**:
-- Ejecutable: `target/release/maity-desktop.exe`
-- Instalador MSI: `target/release/bundle/msi/Maity_0.2.0_x64_en-US.msi`
-- Instalador NSIS: `target/release/bundle/nsis/Maity_0.2.0_x64-setup.exe`
+**Ubicación de los artefactos generados (debug)**:
+- Ejecutable: `target/debug/maity-desktop.exe`
+- Instalador MSI: `target/debug/bundle/msi/Maity_*.msi`
+- Instalador NSIS: `target/debug/bundle/nsis/Maity_*-setup.exe`
+
+**Para build de producción (release)** (solo cuando se prepara un release):
+```bash
+cd frontend && pnpm run tauri:build     # Build release optimizado + instaladores
+```
 
 **Reportar resultado obligatoriamente**:
-- **pnpm run tauri:build**: EXIT CODE 0 (OK) / EXIT CODE != 0 (FALLO) + errores completos
+- **pnpm run tauri:build:debug**: EXIT CODE 0 (OK) / EXIT CODE != 0 (FALLO) + errores completos
 - Si FALLO: NO hacer commit, NO reportar completado, CORREGIR primero
 
 **Si el build falla**: Corregir INMEDIATAMENTE antes de hacer cualquier otra cosa. Un cambio con build roto no es un cambio terminado. NUNCA hacer commit con build fallido.

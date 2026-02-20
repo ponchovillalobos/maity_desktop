@@ -8,12 +8,14 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// Get the command (dev or build)
+// Get the command (dev or build) and optional flags
 const command = process.argv[2];
+const extraArgs = process.argv.slice(3); // e.g. --debug
 if (!command || !['dev', 'build'].includes(command)) {
-  console.error('Usage: node tauri-auto.js [dev|build]');
+  console.error('Usage: node tauri-auto.js [dev|build] [--debug]');
   process.exit(1);
 }
+const isDebug = extraArgs.includes('--debug');
 
 // Detect GPU feature
 let feature = '';
@@ -49,11 +51,14 @@ if (platform === 'linux' && feature === 'cuda') {
 
 // Build the tauri command
 let tauriCmd = `tauri ${command}`;
+if (isDebug) {
+  tauriCmd += ' --debug';
+}
 if (feature && feature !== 'none') {
   tauriCmd += ` -- --features ${feature}`;
-  console.log(`🚀 Running: tauri ${command} with features: ${feature}`);
+  console.log(`🚀 Running: tauri ${command}${isDebug ? ' --debug' : ''} with features: ${feature}`);
 } else {
-  console.log(`🚀 Running: tauri ${command} (CPU-only mode)`);
+  console.log(`🚀 Running: tauri ${command}${isDebug ? ' --debug' : ''} (CPU-only mode)`);
 }
 console.log('');
 
@@ -64,7 +69,7 @@ try {
   // For build command: check if the failure is only due to missing updater signing key
   // The actual compilation and bundling may have succeeded
   if (command === 'build') {
-    const targetDir = path.resolve(__dirname, '..', '..', 'target', 'release', 'bundle');
+    const targetDir = path.resolve(__dirname, '..', '..', 'target', isDebug ? 'debug' : 'release', 'bundle');
     const hasBundles = fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0;
 
     if (hasBundles && !process.env.TAURI_SIGNING_PRIVATE_KEY) {

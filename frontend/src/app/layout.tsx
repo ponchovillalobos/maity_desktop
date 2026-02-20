@@ -25,6 +25,7 @@ import { ChunkErrorRecovery } from '@/components/shared/ChunkErrorRecovery'
 import { MeetingDetectionDialog } from '@/components/meeting-detection/MeetingDetectionDialog'
 import { OfflineIndicator } from '@/components/shared/OfflineIndicator'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { ParakeetAutoDownloadProvider } from '@/contexts/ParakeetAutoDownloadContext'
 import { LoginScreen } from '@/components/Auth'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@/contexts/ThemeContext'
@@ -219,6 +220,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
     <RecordingStateProvider>
       <TranscriptProvider>
         <ConfigProvider>
+          <ParakeetAutoDownloadProvider>
           <OllamaDownloadProvider>
             <OnboardingProvider>
               <SidebarProvider>
@@ -248,6 +250,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
               </SidebarProvider>
             </OnboardingProvider>
           </OllamaDownloadProvider>
+          </ParakeetAutoDownloadProvider>
         </ConfigProvider>
       </TranscriptProvider>
     </RecordingStateProvider>

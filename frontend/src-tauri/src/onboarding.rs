@@ -190,17 +190,17 @@ pub async fn complete_onboarding<R: Runtime>(
     }
     info!("Saved summary model config: provider=openai, model=gpt-4o-2024-11-20");
 
-    // Save transcription config - use Deepgram (cloud API) with Nova-3 and Spanish
+    // Save transcription config - use Parakeet (local) with int8 model and Spanish
     if let Err(e) = SettingsRepository::save_transcript_config(
         pool,
-        "deepgram",
-        "nova-3",
+        "parakeet",
+        "parakeet-tdt-0.6b-v3-int8",
         Some("es-419"),
     ).await {
         error!("Failed to save transcription model config: {}", e);
         return Err(format!("Failed to save transcription model config: {}", e));
     }
-    info!("Saved transcription model config: provider=deepgram, model=nova-3, language=es-419");
+    info!("Saved transcription model config: provider=parakeet, model=parakeet-tdt-0.6b-v3-int8, language=es-419");
 
     // Step 2: Only NOW mark onboarding as complete (after DB operations succeed)
     let mut status = load_onboarding_status(&app)
@@ -209,14 +209,14 @@ pub async fn complete_onboarding<R: Runtime>(
 
     status.completed = true;
     status.current_step = 4; // Max step (4 on macOS with permissions, 3 on other platforms)
-    // Cloud mode - mark as "cloud" to indicate no local downloads needed
-    status.model_status.parakeet = "cloud".to_string();
+    // Local mode - mark parakeet as pending_download for auto-download at startup
+    status.model_status.parakeet = "pending_download".to_string();
     status.model_status.summary = "cloud".to_string();
 
     save_onboarding_status(&app, &status)
         .await
         .map_err(|e| format!("Failed to save completed onboarding status: {}", e))?;
 
-    info!("Onboarding completed successfully with cloud providers");
+    info!("Onboarding completed successfully with local Parakeet provider");
     Ok(())
 }

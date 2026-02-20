@@ -505,15 +505,15 @@ pub fn run() {
                         let pool = app_state.db_manager.pool();
                         match crate::database::repositories::setting::SettingsRepository::get_transcript_config(pool).await {
                             Ok(Some(config)) => config.provider,
-                            Ok(None) => "deepgram".to_string(), // Default to cloud
+                            Ok(None) => "parakeet".to_string(), // Default to local Parakeet
                             Err(e) => {
-                                log::warn!("Failed to read transcript config: {}, defaulting to deepgram", e);
-                                "deepgram".to_string()
+                                log::warn!("Failed to read transcript config: {}, defaulting to parakeet", e);
+                                "parakeet".to_string()
                             }
                         }
                     } else {
-                        log::warn!("AppState not available, defaulting to deepgram");
-                        "deepgram".to_string()
+                        log::warn!("AppState not available, defaulting to parakeet");
+                        "parakeet".to_string()
                     }
                 };
 
@@ -548,14 +548,10 @@ pub fn run() {
                     log::info!("Skipping Whisper init - using cloud provider: {}", transcript_provider);
                 }
 
-                // Initialize Parakeet only if using parakeet
-                if transcript_provider == "parakeet" {
-                    log::info!("Initializing Parakeet engine (local provider configured)");
-                    if let Err(e) = parakeet_engine::commands::parakeet_init().await {
-                        log::error!("Failed to initialize Parakeet engine: {}", e);
-                    }
-                } else {
-                    log::info!("Skipping Parakeet init - using cloud provider: {}", transcript_provider);
+                // Always initialize Parakeet engine (for auto-download at startup)
+                log::info!("Initializing Parakeet engine (always - for auto-download)");
+                if let Err(e) = parakeet_engine::commands::parakeet_init().await {
+                    log::error!("Failed to initialize Parakeet engine: {}", e);
                 }
 
                 // Initialize Moonshine only if using moonshine

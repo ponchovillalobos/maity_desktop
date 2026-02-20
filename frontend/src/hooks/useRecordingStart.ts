@@ -146,7 +146,9 @@ export function useRecordingStart(
             return {
               ready: false,
               isDownloading,
-              error: 'Modelo de transcripción Parakeet no disponible.'
+              error: isDownloading
+                ? 'El modelo de transcripción se está descargando. Podrás grabar cuando termine.'
+                : 'Modelo de transcripción no disponible. Reinicia la app para iniciar la descarga.'
             };
           } catch (error) {
             console.error('Failed to check Parakeet status:', error);

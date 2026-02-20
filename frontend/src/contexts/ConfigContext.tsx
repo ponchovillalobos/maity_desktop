@@ -65,10 +65,14 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
 
   // Transcript model configuration state
   const [transcriptModelConfig, setTranscriptModelConfig] = useState<TranscriptModelProps>({
-    provider: 'parakeet',
-    model: 'parakeet-tdt-0.6b-v3-int8',
+    provider: 'deepgram',
+    model: 'nova-3',
+    language: 'es-419',
     apiKey: null
   });
+
+  // Track when DB config has been loaded
+  const [dbConfigLoaded, setDbConfigLoaded] = useState(false);
 
   // Ollama models list and error state
   const [models, setModels] = useState<OllamaModel[]>([]);
@@ -171,34 +175,60 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         if (config) {
           console.log('[ConfigContext] Loaded saved transcript config:', config);
           setTranscriptModelConfig({
-            provider: config.provider || 'parakeet',
-            model: config.model || 'parakeet-tdt-0.6b-v3-int8',
-            apiKey: config.apiKey || null
+            provider: config.provider || 'deepgram',
+            model: config.model || 'nova-3',
+            apiKey: config.apiKey || null,
+            language: config.language || 'es-419'
           });
         }
+        setDbConfigLoaded(true);
       } catch (error) {
         console.error('[ConfigContext] Failed to load transcript config:', error);
+        setDbConfigLoaded(true);
       }
     };
     loadTranscriptConfig();
   }, []);
 
-  // Force Deepgram for regular (non-developer) users
+  // Force Deepgram for all users at startup; non-devs always, devs only once (they can change after)
+  const forcedForDev = useRef(false);
+
   useEffect(() => {
+    if (!dbConfigLoaded) return; // Wait for DB config to load first
     const email = user?.email ?? maityUser?.email ?? null;
+    if (!email) return;
+
     const role = getUserRole(email);
-    if (!checkIsDeveloper(role) && email && transcriptModelConfig.provider !== 'deepgram') {
-      console.log('[ConfigContext] Forcing Deepgram for non-developer user:', email);
-      const deepgramConfig: TranscriptModelProps = { provider: 'deepgram', model: 'nova-3', language: 'es-419' };
-      setTranscriptModelConfig(deepgramConfig);
-      invoke('api_save_transcript_config', {
-        provider: 'deepgram',
-        model: 'nova-3',
-        apiKey: null,
-        language: 'es-419',
-      }).catch(err => console.error('[ConfigContext] Failed to persist Deepgram config:', err));
+
+    if (!checkIsDeveloper(role)) {
+      // Non-developer: always force Deepgram
+      if (transcriptModelConfig.provider !== 'deepgram') {
+        console.log('[ConfigContext] Forcing Deepgram for non-developer user:', email);
+        const deepgramConfig: TranscriptModelProps = { provider: 'deepgram', model: 'nova-3', language: 'es-419' };
+        setTranscriptModelConfig(deepgramConfig);
+        invoke('api_save_transcript_config', {
+          provider: 'deepgram',
+          model: 'nova-3',
+          apiKey: null,
+          language: 'es-419',
+        }).catch(err => console.error('[ConfigContext] Failed to persist Deepgram config:', err));
+      }
+    } else if (!forcedForDev.current) {
+      // Developer: force once at startup (after DB load), then allow changes
+      forcedForDev.current = true;
+      if (transcriptModelConfig.provider !== 'deepgram') {
+        console.log('[ConfigContext] Defaulting to Deepgram for developer:', email);
+        const deepgramConfig: TranscriptModelProps = { provider: 'deepgram', model: 'nova-3', language: 'es-419' };
+        setTranscriptModelConfig(deepgramConfig);
+        invoke('api_save_transcript_config', {
+          provider: 'deepgram',
+          model: 'nova-3',
+          apiKey: null,
+          language: 'es-419',
+        }).catch(err => console.error('[ConfigContext] Failed to persist Deepgram config:', err));
+      }
     }
-  }, [user?.email, maityUser?.email, transcriptModelConfig.provider]);
+  }, [dbConfigLoaded, user?.email, maityUser?.email, transcriptModelConfig.provider]);
 
   // Load model configuration on mount
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
@@ -42,6 +42,7 @@ export function useRecordingStart(
   showModal?: (name: 'modelSelector', message?: string) => void
 ): UseRecordingStartReturn {
   const [isAutoStarting, setIsAutoStarting] = useState(false);
+  const isStartingRef = useRef(false);
 
   const { clearTranscripts, setMeetingTitle } = useTranscripts();
   const { setIsMeetingActive } = useSidebar();
@@ -184,6 +185,37 @@ export function useRecordingStart(
           }
         }
 
+        case 'moonshine': {
+          // For Moonshine, check if local models are available
+          try {
+            await invoke('moonshine_init');
+            const hasModels = await invoke<boolean>('moonshine_has_available_models');
+            if (hasModels) {
+              console.log('✅ Moonshine models available, ready to record');
+              return { ready: true, isDownloading: false };
+            }
+
+            // Check if downloading
+            const models = await invoke<any[]>('moonshine_get_available_models');
+            const isDownloading = models.some(m =>
+              m.status && (
+                typeof m.status === 'object'
+                  ? 'Downloading' in m.status
+                  : m.status === 'Downloading'
+              )
+            );
+
+            return {
+              ready: false,
+              isDownloading,
+              error: 'Modelo de transcripción Moonshine no disponible.'
+            };
+          } catch (error) {
+            console.error('Failed to check Moonshine status:', error);
+            return { ready: false, isDownloading: false, error: 'Error al verificar Moonshine' };
+          }
+        }
+
         default:
           console.warn(`Unknown provider: ${provider}, defaulting to ready`);
           return { ready: true, isDownloading: false };
@@ -196,6 +228,12 @@ export function useRecordingStart(
 
   // Handle manual recording start (from button click)
   const handleRecordingStart = useCallback(async () => {
+    if (isStartingRef.current) {
+      console.log('[recording] Start already in progress, ignoring click');
+      return;
+    }
+    isStartingRef.current = true;
+
     try {
       const provider = transcriptModelConfig?.provider || 'deepgram';
       console.log(`handleRecordingStart called - checking ${provider} transcription status`);
@@ -261,6 +299,8 @@ export function useRecordingStart(
       Analytics.trackButtonClick('start_recording_error', 'home_page');
       // Re-throw so RecordingControls can handle device-specific errors
       throw error;
+    } finally {
+      isStartingRef.current = false;
     }
   }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, selectedDevices, showModal, setStatus, transcriptModelConfig, getErrorToastTitle]);
 

@@ -43,31 +43,21 @@ export class DeepgramError extends Error {
  * @throws DeepgramError if user is not authenticated or config generation fails
  */
 export async function getDeepgramProxyConfig(): Promise<DeepgramProxyConfig> {
-  // Get session, refreshing proactively if token is expired or about to expire
-  let {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession()
+  // Get session from local cache (auto-refreshed by Supabase background timer).
+  // Using getSession() instead of refreshSession() because refreshSession() triggers
+  // TOKEN_REFRESHED events that cause AuthContext re-renders, which re-mount components
+  // and orphan the in-flight promise — hanging the recording start indefinitely.
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
   if (sessionError || !session) {
     console.error('[deepgram] No active session:', sessionError?.message)
-    throw new DeepgramError('Debes iniciar sesión para grabar', 'auth')
+    throw new DeepgramError(
+      'Debes iniciar sesión para grabar',
+      'auth'
+    )
   }
 
-  // Proactively refresh if token is expired or expires within 60s
-  const expiresAt = session.expires_at // Unix timestamp in seconds
-  if (expiresAt && expiresAt < Math.floor(Date.now() / 1000) + 60) {
-    console.log('[deepgram] Token expired or about to expire, refreshing...')
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-    if (refreshError || !refreshData.session) {
-      throw new DeepgramError(
-        'Tu sesión ha expirado. Cierra sesión y vuelve a iniciar.',
-        'auth'
-      )
-    }
-    session = refreshData.session
-    console.log('[deepgram] Token refreshed successfully')
-  }
+  console.log('[deepgram] Using session token, expires at:', new Date((session.expires_at ?? 0) * 1000).toISOString())
 
   console.log('[deepgram] Fetching proxy config via Rust backend...')
 

@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import type { MeetingRecord } from './types';
 
 interface UseMeetingOperationsProps {
-  meeting: any;
+  meeting: MeetingRecord;
 }
 
 export function useMeetingOperations({

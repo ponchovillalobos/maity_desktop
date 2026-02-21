@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Cloud, Mic, Sparkles, Check, Loader2 } from 'lucide-react';
+import { Mic, Sparkles, Check, Loader2, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import { toast } from 'sonner';
 
 /**
- * Cloud Setup Step - Confirms cloud provider configuration
+ * Local Setup Step - Confirms local-first configuration
  *
- * This step informs the user that Maity uses cloud APIs:
- * - Deepgram for real-time transcription
- * - OpenAI for meeting summaries
+ * This step informs the user that Maity uses:
+ * - Whisper for local transcription (privacy-first)
+ * - OpenAI for meeting summaries (cloud)
  *
- * No local model downloads are required.
+ * Whisper model will be downloaded on first use.
  */
 export function DownloadProgressStep() {
   const {
@@ -38,7 +38,7 @@ export function DownloadProgressStep() {
   }, []);
 
   const handleContinue = async () => {
-    setUseCloudTranscription(true);
+    setUseCloudTranscription(false);
     setIsCompleting(true);
 
     try {
@@ -60,12 +60,12 @@ export function DownloadProgressStep() {
     }
   };
 
-  const cloudProviders = [
+  const providers = [
     {
-      name: 'Deepgram',
-      description: 'Transcripción en tiempo real',
+      name: 'Whisper Local',
+      description: 'Transcripción local y privada',
       icon: <Mic className="w-5 h-5 text-[#3a4ac3]" />,
-      model: 'Nova-2',
+      model: 'Small',
     },
     {
       name: 'OpenAI',
@@ -77,20 +77,20 @@ export function DownloadProgressStep() {
 
   return (
     <OnboardingContainer
-      title="IA Potenciada por la Nube"
-      description="Maity usa APIs en la nube para transcripción rápida y precisa, y resúmenes inteligentes."
+      title="Transcripción Local y Privada"
+      description="Maity transcribe tus reuniones localmente usando Whisper, garantizando total privacidad. Los resúmenes usan IA en la nube."
       step={3}
       totalSteps={isMac ? 4 : 3}
     >
       <div className="flex flex-col items-center space-y-8">
-        {/* Cloud Icon */}
+        {/* Privacy Icon */}
         <div className="w-16 h-16 rounded-full bg-[#f0f2fe] flex items-center justify-center">
-          <Cloud className="w-8 h-8 text-[#3a4ac3]" />
+          <Shield className="w-8 h-8 text-[#3a4ac3]" />
         </div>
 
         {/* Provider Cards */}
         <div className="w-full max-w-md space-y-3">
-          {cloudProviders.map((provider) => (
+          {providers.map((provider) => (
             <div
               key={provider.name}
               className="bg-white dark:bg-gray-800 rounded-xl border border-[#e7e7e9] dark:border-gray-700 p-4 flex items-center justify-between"
@@ -119,15 +119,10 @@ export function DownloadProgressStep() {
         {/* Benefits */}
         <div className="w-full max-w-md bg-[#f5f5f6] rounded-lg p-4">
           <p className="text-sm text-[#4a4a4c] text-center">
-            Sin descargas necesarias. Tus reuniones se procesan de forma segura en la nube
-            con modelos de IA líderes en la industria.
+            El modelo de transcripción se descargará automáticamente la primera vez que grabes
+            (~466 MB). Tu audio nunca sale de tu computadora.
           </p>
         </div>
-
-        {/* API Key Note */}
-        <p className="text-xs text-[#6a6a6d] text-center max-w-md">
-          Asegúrate de haber configurado tus claves API en el archivo .env o en Configuración.
-        </p>
 
         {/* Continue Button */}
         <div className="w-full max-w-xs">

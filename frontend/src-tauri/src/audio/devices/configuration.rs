@@ -15,28 +15,22 @@ lazy_static! {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AudioTranscriptionEngine {
-    Deepgram,
-    WhisperTiny,
-    WhisperDistilLargeV3,
-    WhisperLargeV3Turbo,
-    WhisperLargeV3,
+    Parakeet,
+    Canary,
 }
 
 impl fmt::Display for AudioTranscriptionEngine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AudioTranscriptionEngine::Deepgram => write!(f, "Deepgram"),
-            AudioTranscriptionEngine::WhisperTiny => write!(f, "WhisperTiny"),
-            AudioTranscriptionEngine::WhisperDistilLargeV3 => write!(f, "WhisperLarge"),
-            AudioTranscriptionEngine::WhisperLargeV3Turbo => write!(f, "WhisperLargeV3Turbo"),
-            AudioTranscriptionEngine::WhisperLargeV3 => write!(f, "WhisperLargeV3"),
+            AudioTranscriptionEngine::Parakeet => write!(f, "Parakeet"),
+            AudioTranscriptionEngine::Canary => write!(f, "Canary"),
         }
     }
 }
 
 impl Default for AudioTranscriptionEngine {
     fn default() -> Self {
-        AudioTranscriptionEngine::WhisperLargeV3Turbo
+        AudioTranscriptionEngine::Parakeet
     }
 }
 

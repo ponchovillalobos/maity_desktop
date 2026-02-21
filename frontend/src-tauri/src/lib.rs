@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex as StdMutex;
 // Removed unused import
 
@@ -16,21 +15,8 @@ macro_rules! perf_debug {
     ($($arg:tt)*) => {};
 }
 
-#[cfg(debug_assertions)]
-macro_rules! perf_trace {
-    ($($arg:tt)*) => {
-        log::trace!($($arg)*)
-    };
-}
-
-#[cfg(not(debug_assertions))]
-macro_rules! perf_trace {
-    ($($arg:tt)*) => {};
-}
-
 // Make these macros available to other modules
 pub(crate) use perf_debug;
-pub(crate) use perf_trace;
 
 // Re-export async logging macros for external use (removed due to macro conflicts)
 
@@ -46,12 +32,13 @@ pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
 pub mod openrouter;
+pub mod canary_engine;
 pub mod parakeet_engine;
 pub mod state;
 pub mod summary;
 pub mod tray;
 pub mod utils;
-pub mod whisper_engine;
+
 
 use audio::{list_audio_devices, AudioDevice, trigger_audio_permission};
 use log::{error as log_error, info as log_info};
@@ -60,11 +47,65 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::RwLock;
 
-static RECORDING_FLAG: AtomicBool = AtomicBool::new(false);
-
-// Global language preference storage (default to "auto-translate" for automatic translation to English)
+// Global language preference storage (initialized with detected system language)
 static LANGUAGE_PREFERENCE: std::sync::LazyLock<StdMutex<String>> =
-    std::sync::LazyLock::new(|| StdMutex::new("auto-translate".to_string()));
+    std::sync::LazyLock::new(|| StdMutex::new(detect_system_language()));
+
+/// Detect the system's UI language automatically
+fn detect_system_language() -> String {
+    // Windows-specific: use Win32 Globalization API
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(lang) = detect_system_language_windows() {
+            log::info!("Detected system language (Windows API): {}", lang);
+            return lang;
+        }
+    }
+
+    // Unix-like: check standard locale environment variables
+    for var in &["LANG", "LC_ALL", "LANGUAGE", "LC_MESSAGES"] {
+        if let Ok(val) = std::env::var(var) {
+            if !val.is_empty() && val != "C" && val != "POSIX" {
+                let code = extract_language_code(&val);
+                log::info!("Detected system language (env {}={}): {}", var, val, code);
+                return code;
+            }
+        }
+    }
+
+    log::info!("No system language detected, defaulting to 'es'");
+    "es".to_string() // fallback for Latin American users
+}
+
+/// Extract 2-letter language code from locale string
+/// Examples: "es_MX.UTF-8" → "es", "en-US" → "en", "pt_BR" → "pt"
+fn extract_language_code(locale: &str) -> String {
+    locale
+        .split(|c: char| c == '_' || c == '-' || c == '.')
+        .next()
+        .unwrap_or("es")
+        .to_lowercase()
+}
+
+#[cfg(target_os = "windows")]
+fn detect_system_language_windows() -> Option<String> {
+    use windows::Win32::Globalization::GetUserDefaultLocaleName;
+
+    unsafe {
+        let mut buffer = [0u16; 85]; // LOCALE_NAME_MAX_LENGTH
+        let len = GetUserDefaultLocaleName(&mut buffer);
+        if len > 1 {
+            // len includes null terminator
+            let locale_name = String::from_utf16_lossy(&buffer[..(len as usize) - 1]);
+            // "es-MX" → "es", "en-US" → "en"
+            let lang_code = locale_name.split('-').next()?.to_lowercase();
+            if !lang_code.is_empty() {
+                return Some(lang_code);
+            }
+        }
+        None
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct RecordingArgs {
@@ -107,7 +148,6 @@ async fn start_recording<R: Runtime>(
     .await
     {
         Ok(_) => {
-            RECORDING_FLAG.store(true, Ordering::SeqCst);
             tray::update_tray_menu(&app);
 
             log_info!("Recording started successfully");
@@ -159,7 +199,6 @@ async fn stop_recording<R: Runtime>(app: AppHandle<R>, args: RecordingArgs) -> R
     .await
     {
         Ok(_) => {
-            RECORDING_FLAG.store(false, Ordering::SeqCst);
             tray::update_tray_menu(&app);
 
             // Create the save directory if it doesn't exist
@@ -195,8 +234,7 @@ async fn stop_recording<R: Runtime>(app: AppHandle<R>, args: RecordingArgs) -> R
         }
         Err(e) => {
             log_error!("Failed to stop audio recording: {}", e);
-            // Still update the flag even if stopping failed
-            RECORDING_FLAG.store(false, Ordering::SeqCst);
+            // Still update the tray even if stopping failed
             tray::update_tray_menu(&app);
             Err(format!("Failed to stop recording: {}", e))
         }
@@ -221,6 +259,26 @@ fn get_transcription_status() -> TranscriptionStatus {
 #[tauri::command]
 fn health_check() -> bool {
     true
+}
+
+/// System hardware specs exposed to frontend for model recommendation
+#[derive(Debug, Serialize, Clone)]
+struct SystemSpecs {
+    ram_gb: u32,
+    cpu_cores: u32,
+    gpu_type: String,
+    performance_tier: String,
+}
+
+#[tauri::command]
+fn get_system_specs() -> Result<SystemSpecs, String> {
+    let hw = audio::HardwareProfile::detect();
+    Ok(SystemSpecs {
+        ram_gb: hw.memory_gb as u32,
+        cpu_cores: hw.cpu_cores as u32,
+        gpu_type: format!("{:?}", hw.gpu_type),
+        performance_tier: format!("{:?}", hw.performance_tier),
+    })
 }
 
 #[tauri::command]
@@ -282,8 +340,6 @@ async fn is_audio_level_monitoring() -> bool {
 }
 
 // Analytics commands are now handled by analytics::commands module
-
-// Whisper commands are now handled by whisper_engine::commands module
 
 #[tauri::command]
 async fn get_audio_devices() -> Result<Vec<AudioDevice>, String> {
@@ -410,7 +466,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .manage(whisper_engine::parallel_commands::ParallelProcessorState::new())
         .manage(Arc::new(RwLock::new(
             None::<notifications::manager::NotificationManager<tauri::Wry>>,
         )) as NotificationManagerState<tauri::Wry>)
@@ -453,39 +508,89 @@ pub fn run() {
 
             // Initialize database FIRST (handles first launch detection and conditional setup)
             // This must happen before engine initialization so we can read config
-            tauri::async_runtime::block_on(async {
+            match tauri::async_runtime::block_on(async {
                 database::setup::initialize_database_on_startup(&_app.handle()).await
-            })
-            .expect("Failed to initialize database");
+            }) {
+                Ok(()) => {
+                    log::info!("Database initialized successfully");
+                }
+                Err(e) => {
+                    log::error!("Failed to initialize database: {}", e);
+                    let msg = format!(
+                        "Error al inicializar la base de datos:\n\n{}\n\nPuedes intentar eliminar el archivo de base de datos en:\n{}\n\ny reiniciar la aplicación.",
+                        e,
+                        _app.handle()
+                            .path()
+                            .app_data_dir()
+                            .map(|p| p.join("meeting_minutes.sqlite").to_string_lossy().to_string())
+                            .unwrap_or_else(|_| "%APPDATA%\\com.maity.ai\\meeting_minutes.sqlite".to_string())
+                    );
+                    rfd::MessageDialog::new()
+                        .set_title("Maity - Error de Inicio")
+                        .set_description(&msg)
+                        .set_level(rfd::MessageLevel::Error)
+                        .show();
+                    std::process::exit(1);
+                }
+            }
 
             // Set models directories (always set, even if engines won't be initialized)
-            whisper_engine::commands::set_models_directory(&_app.handle());
             parakeet_engine::commands::set_models_directory(&_app.handle());
+            canary_engine::commands::set_models_directory(&_app.handle());
 
-            // === CONDITIONAL ENGINE INITIALIZATION ===
-            // Only initialize local AI engines if configured to use them
-            // This saves ~3 seconds on startup for cloud-only users
+            // === ENGINE INITIALIZATION ===
+            // Always initialize Parakeet engine for local transcription (privacy-first, CPU-optimized)
+            // Whisper is disabled — not initialized at startup
 
             let app_handle_for_config = _app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // Read transcript provider from database
-                let transcript_provider = {
+                // Migration: if DB has localWhisper, migrate to parakeet automatically
+                {
                     let state = app_handle_for_config.try_state::<crate::state::AppState>();
                     if let Some(app_state) = state {
                         let pool = app_state.db_manager.pool();
                         match crate::database::repositories::setting::SettingsRepository::get_transcript_config(pool).await {
-                            Ok(Some(config)) => config.provider,
-                            Ok(None) => "deepgram".to_string(), // Default to cloud
-                            Err(e) => {
-                                log::warn!("Failed to read transcript config: {}, defaulting to deepgram", e);
-                                "deepgram".to_string()
+                            Ok(Some(config)) if config.provider == "localWhisper" => {
+                                log::info!("Migrating transcript provider from localWhisper to parakeet...");
+                                if let Err(e) = crate::database::repositories::setting::SettingsRepository::save_transcript_config(
+                                    pool, "parakeet", "parakeet-tdt-0.6b-v3-int8"
+                                ).await {
+                                    log::error!("Failed to migrate provider in DB: {}", e);
+                                } else {
+                                    log::info!("Migrated provider from localWhisper to parakeet automatically");
+                                }
                             }
+                            _ => {} // Already parakeet or no config — nothing to migrate
+                        }
+                    }
+                }
+
+                // Always initialize Parakeet engine unconditionally
+                log::info!("Initializing Parakeet engine (always-on local transcription)");
+                if let Err(e) = parakeet_engine::commands::parakeet_init().await {
+                    log::error!("Failed to initialize Parakeet engine: {}", e);
+                }
+
+                // Initialize Canary engine if configured as the transcript provider
+                {
+                    let state = app_handle_for_config.try_state::<crate::state::AppState>();
+                    let should_init_canary = if let Some(app_state) = state {
+                        let pool = app_state.db_manager.pool();
+                        match crate::database::repositories::setting::SettingsRepository::get_transcript_config(pool).await {
+                            Ok(Some(config)) if config.provider == "canary" => true,
+                            _ => false,
                         }
                     } else {
-                        log::warn!("AppState not available, defaulting to deepgram");
-                        "deepgram".to_string()
+                        false
+                    };
+
+                    if should_init_canary {
+                        log::info!("Initializing Canary engine (configured as transcript provider)");
+                        if let Err(e) = canary_engine::commands::canary_init().await {
+                            log::error!("Failed to initialize Canary engine: {}", e);
+                        }
                     }
-                };
+                }
 
                 // Read summary provider from database
                 let summary_provider = {
@@ -494,7 +599,7 @@ pub fn run() {
                         let pool = app_state.db_manager.pool();
                         match crate::database::repositories::setting::SettingsRepository::get_model_config(pool).await {
                             Ok(Some(config)) => config.provider,
-                            Ok(None) => "custom-openai".to_string(), // Default to cloud
+                            Ok(None) => "custom-openai".to_string(),
                             Err(e) => {
                                 log::warn!("Failed to read model config: {}, defaulting to custom-openai", e);
                                 "custom-openai".to_string()
@@ -505,28 +610,6 @@ pub fn run() {
                         "custom-openai".to_string()
                     }
                 };
-
-                log::info!("Transcript provider: {}, Summary provider: {}", transcript_provider, summary_provider);
-
-                // Initialize Whisper only if using localWhisper
-                if transcript_provider == "localWhisper" {
-                    log::info!("Initializing Whisper engine (local provider configured)");
-                    if let Err(e) = whisper_engine::commands::whisper_init().await {
-                        log::error!("Failed to initialize Whisper engine: {}", e);
-                    }
-                } else {
-                    log::info!("Skipping Whisper init - using cloud provider: {}", transcript_provider);
-                }
-
-                // Initialize Parakeet only if using parakeet
-                if transcript_provider == "parakeet" {
-                    log::info!("Initializing Parakeet engine (local provider configured)");
-                    if let Err(e) = parakeet_engine::commands::parakeet_init().await {
-                        log::error!("Failed to initialize Parakeet engine: {}", e);
-                    }
-                } else {
-                    log::info!("Skipping Parakeet init - using cloud provider: {}", transcript_provider);
-                }
 
                 // Initialize ModelManager only if using builtin-ai
                 if summary_provider == "builtin-ai" {
@@ -613,18 +696,6 @@ pub fn run() {
             analytics::commands::track_analytics_enabled,
             analytics::commands::track_analytics_disabled,
             analytics::commands::track_analytics_transparency_viewed,
-            whisper_engine::commands::whisper_init,
-            whisper_engine::commands::whisper_get_available_models,
-            whisper_engine::commands::whisper_load_model,
-            whisper_engine::commands::whisper_get_current_model,
-            whisper_engine::commands::whisper_is_model_loaded,
-            whisper_engine::commands::whisper_has_available_models,
-            whisper_engine::commands::whisper_validate_model_ready,
-            whisper_engine::commands::whisper_transcribe_audio,
-            whisper_engine::commands::whisper_get_models_directory,
-            whisper_engine::commands::whisper_download_model,
-            whisper_engine::commands::whisper_cancel_download,
-            whisper_engine::commands::whisper_delete_corrupted_model,
             // Parakeet engine commands
             parakeet_engine::commands::parakeet_init,
             parakeet_engine::commands::parakeet_get_available_models,
@@ -640,18 +711,18 @@ pub fn run() {
             parakeet_engine::commands::parakeet_cancel_download,
             parakeet_engine::commands::parakeet_delete_corrupted_model,
             parakeet_engine::commands::open_parakeet_models_folder,
-            // Parallel processing commands
-            whisper_engine::parallel_commands::initialize_parallel_processor,
-            whisper_engine::parallel_commands::start_parallel_processing,
-            whisper_engine::parallel_commands::pause_parallel_processing,
-            whisper_engine::parallel_commands::resume_parallel_processing,
-            whisper_engine::parallel_commands::stop_parallel_processing,
-            whisper_engine::parallel_commands::get_parallel_processing_status,
-            whisper_engine::parallel_commands::get_system_resources,
-            whisper_engine::parallel_commands::check_resource_constraints,
-            whisper_engine::parallel_commands::calculate_optimal_workers,
-            whisper_engine::parallel_commands::prepare_audio_chunks,
-            whisper_engine::parallel_commands::test_parallel_processing_setup,
+            // Canary engine commands
+            canary_engine::commands::canary_init,
+            canary_engine::commands::canary_get_available_models,
+            canary_engine::commands::canary_load_model,
+            canary_engine::commands::canary_get_current_model,
+            canary_engine::commands::canary_is_model_loaded,
+            canary_engine::commands::canary_unload_model,
+            canary_engine::commands::canary_validate_model_ready,
+            canary_engine::commands::canary_transcribe_audio,
+            canary_engine::commands::canary_download_model,
+            canary_engine::commands::canary_cancel_download,
+            canary_engine::commands::canary_delete_model,
             get_audio_devices,
             trigger_microphone_permission,
             start_recording_with_devices,
@@ -780,7 +851,6 @@ pub fn run() {
             // Database and Models path commands
             database::commands::get_database_directory,
             database::commands::open_database_folder,
-            whisper_engine::commands::open_models_folder,
             // Onboarding commands
             onboarding::get_onboarding_status,
             onboarding::save_onboarding_status_cmd,
@@ -807,6 +877,8 @@ pub fn run() {
             logging::commands::clear_old_logs,
             // Health check
             health_check,
+            // System specs for model recommendation
+            get_system_specs,
             // System settings commands
             #[cfg(target_os = "macos")]
             utils::open_system_settings,

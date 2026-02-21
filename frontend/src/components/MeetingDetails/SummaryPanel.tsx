@@ -1,6 +1,6 @@
 "use client";
 
-import { Summary, SummaryResponse, Transcript } from '@/types';
+import { Summary, SummaryResponse, Transcript, BlockNoteBlock } from '@/types';
 import { EditableTitle } from '@/components/EditableTitle';
 import { BlockNoteSummaryView, BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
 import { EmptyStateSummary } from '@/components/EmptyStateSummary';
@@ -9,6 +9,7 @@ import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
 import Analytics from '@/lib/analytics';
 import { RefObject } from 'react';
+import { logger } from '@/lib/logger';
 
 interface SummaryPanelProps {
   meeting: {
@@ -37,7 +38,7 @@ interface SummaryPanelProps {
   onStopGeneration: () => void;
   customPrompt: string;
   summaryResponse: SummaryResponse | null;
-  onSaveSummary: (summary: Summary | { markdown?: string; summary_json?: any[] }) => Promise<void>;
+  onSaveSummary: (summary: Summary | { markdown?: string; summary_json?: BlockNoteBlock[] }) => Promise<void>;
   onSummaryChange: (summary: Summary) => void;
   onDirtyChange: (isDirty: boolean) => void;
   summaryError: string | null;
@@ -130,7 +131,7 @@ export function SummaryPanel({
                 onCopy={onCopySummary}
                 onFind={() => {
                   // TODO: Implement find in summary functionality
-                  console.log('Find in summary clicked');
+                  logger.debug('Find in summary clicked');
                 }}
                 onOpenFolder={onOpenFolder}
                 hasSummary={!!aiSummary}

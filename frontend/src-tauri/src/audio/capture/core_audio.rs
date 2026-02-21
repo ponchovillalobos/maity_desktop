@@ -164,7 +164,10 @@ impl CoreAudioCapture {
             _output_time: &cat::AudioTimeStamp,
             ctx: Option<&mut AudioContext>,
         ) -> os::Status {
-            let ctx = ctx.unwrap();
+            let ctx = match ctx {
+                Some(c) => c,
+                None => return os::Status::NO_ERR,
+            };
 
             // Check for sample rate changes
             let after = device
@@ -316,7 +319,7 @@ fn process_audio_data(ctx: &mut AudioContext, data: &[f32]) {
 
     if pushed > 0 {
         let should_wake = {
-            let mut waker_state = ctx.waker_state.lock().unwrap();
+            let mut waker_state = ctx.waker_state.lock().unwrap_or_else(|e| { log::error!("Lock poisoned: {}", e); e.into_inner() });
             if !waker_state.has_data {
                 waker_state.has_data = true;
                 waker_state.waker.take()
@@ -363,7 +366,7 @@ impl Stream for CoreAudioStream {
 
         // No data available, register waker and return pending
         {
-            let mut state = self.waker_state.lock().unwrap();
+            let mut state = self.waker_state.lock().unwrap_or_else(|e| { log::error!("Lock poisoned: {}", e); e.into_inner() });
             state.has_data = false;
             state.waker = Some(cx.waker().clone());
         }

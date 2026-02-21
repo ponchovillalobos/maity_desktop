@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Cloud, Mic, FileText, Zap } from 'lucide-react';
+import { Shield, Mic, FileText, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 
 /**
- * Setup Overview Step - Cloud-Only Mode
+ * Setup Overview Step - Local-First Mode
  *
- * Explains that Maity uses cloud APIs (Deepgram + OpenAI)
- * for transcription and summaries. No local downloads required.
+ * Explains that Maity uses local Whisper for transcription (privacy-first)
+ * and cloud APIs for summaries. Whisper model downloads on first use.
  */
 export function SetupOverviewStep() {
   const { goNext } = useOnboarding();
@@ -30,8 +30,8 @@ export function SetupOverviewStep() {
   const features = [
     {
       icon: <Mic className="w-5 h-5 text-[#3a4ac3]" />,
-      title: 'Transcripción en Tiempo Real',
-      description: 'Impulsado por Deepgram Nova-2',
+      title: 'Transcripción Local',
+      description: 'Whisper - privada y sin internet',
     },
     {
       icon: <FileText className="w-5 h-5 text-[#16bb7b]" />,
@@ -40,8 +40,8 @@ export function SetupOverviewStep() {
     },
     {
       icon: <Zap className="w-5 h-5 text-[#3a4ac3]" />,
-      title: 'Configuración Instantánea',
-      description: 'Sin descargas necesarias',
+      title: 'Privacidad Total',
+      description: 'Tu audio nunca sale de tu PC',
     },
   ];
 
@@ -52,14 +52,14 @@ export function SetupOverviewStep() {
   return (
     <OnboardingContainer
       title="Resumen de Configuración"
-      description="Maity usa servicios de IA en la nube para transcripción rápida y precisa, y resúmenes inteligentes de reuniones."
+      description="Maity transcribe tus reuniones localmente con Whisper para máxima privacidad, y genera resúmenes inteligentes con IA en la nube."
       step={2}
       totalSteps={isMac ? 4 : 3}
     >
       <div className="flex flex-col items-center space-y-8">
-        {/* Cloud Icon */}
+        {/* Privacy Icon */}
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center">
-          <Cloud className="w-10 h-10 text-[#3a4ac3]" />
+          <Shield className="w-10 h-10 text-[#3a4ac3]" />
         </div>
 
         {/* Features Card */}
@@ -82,11 +82,11 @@ export function SetupOverviewStep() {
           </div>
         </div>
 
-        {/* API Key Reminder */}
-        <div className="w-full max-w-md bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p className="text-sm text-amber-800 text-center">
-            <strong>Importante:</strong> Asegúrate de tener tus claves API de Deepgram y OpenAI
-            configuradas en tu entorno o en la configuración.
+        {/* Model Download Note */}
+        <div className="w-full max-w-md bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800 text-center">
+            El modelo de transcripción Whisper (~466 MB) se descargará automáticamente
+            la primera vez que inicies una grabación.
           </p>
         </div>
 

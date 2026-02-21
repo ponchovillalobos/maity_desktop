@@ -46,20 +46,6 @@ fn find_ffmpeg_path_internal() -> Option<PathBuf> {
         }
     }
 
-    // Check in current working directory
-    if let Ok(cwd) = std::env::current_dir() {
-        debug!("Current working directory: {:?}", cwd);
-        let ffmpeg_in_cwd = cwd.join(EXECUTABLE_NAME);
-        if ffmpeg_in_cwd.is_file() && ffmpeg_in_cwd.exists() {
-            debug!(
-                "Found ffmpeg in current working directory: {:?}",
-                ffmpeg_in_cwd
-            );
-            return Some(ffmpeg_in_cwd);
-        }
-        debug!("ffmpeg not found in current working directory");
-    }
-
     // Check in the same folder as the executable
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_folder) = exe_path.parent() {
@@ -116,7 +102,13 @@ fn find_ffmpeg_path_internal() -> Option<PathBuf> {
         return Some(path);
     }
 
-    let installation_dir = sidecar_dir().map_err(|e| e.to_string()).unwrap();
+    let installation_dir = match sidecar_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            error!("Failed to get sidecar directory: {}", e);
+            return None;
+        }
+    };
     let ffmpeg_in_installation = installation_dir.join(EXECUTABLE_NAME);
     if ffmpeg_in_installation.is_file() {
         debug!("found ffmpeg in directory: {:?}", ffmpeg_in_installation);

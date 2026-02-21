@@ -8,6 +8,7 @@ import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateCon
 import { storageService } from '@/services/storageService';
 import { transcriptService } from '@/services/transcriptService';
 import Analytics from '@/lib/analytics';
+import { logger } from '@/lib/logger';
 
 type SummaryStatus = 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
 
@@ -34,7 +35,6 @@ interface UseRecordingStopReturn {
  * - Window exposure for Rust callbacks
  */
 export function useRecordingStop(
-  setIsRecording: (value: boolean) => void,
   setIsRecordingDisabled: (value: boolean) => void
 ): UseRecordingStopReturn {
   // USE global state instead
@@ -77,7 +77,7 @@ export function useRecordingStop(
 
     const setupRecordingStoppedListener = async () => {
       try {
-        console.log('Setting up recording-stopped listener for navigation...');
+        logger.debug('Setting up recording-stopped listener for navigation...');
         unlistenFn = await listen<{
           message: string;
           folder_path?: string;
@@ -97,7 +97,7 @@ export function useRecordingStop(
           })();
 
         });
-        console.log('Recording stopped listener setup complete');
+        logger.debug('Recording stopped listener setup complete');
       } catch (error) {
         console.error('Failed to setup recording stopped listener:', error);
       }
@@ -106,7 +106,7 @@ export function useRecordingStop(
     setupRecordingStoppedListener();
 
     return () => {
-      console.log('Cleaning up recording stopped listener...');
+      logger.debug('Cleaning up recording stopped listener...');
       if (unlistenFn) {
         unlistenFn();
       }
@@ -126,24 +126,24 @@ export function useRecordingStop(
     stopInProgressRef.current = true;
 
     // Set status to STOPPING immediately
+    // isRecording is now derived from RecordingStateContext (single source of truth)
     setStatus(RecordingStatus.STOPPING);
-    setIsRecording(false);
     setIsRecordingDisabled(true);
     const stopStartTime = Date.now();
 
     try {
-      console.log('Post-stop processing (new implementation)...', {
+      logger.debug('Post-stop processing (new implementation)...', {
         stop_initiated_at: new Date(stopStartTime).toISOString(),
         current_transcript_count: transcriptsRef.current.length
       });
 
       // Note: stop_recording is already called by RecordingControls.stopRecordingAction
       // This function only handles post-stop processing (transcription wait, API call, navigation)
-      console.log('Recording already stopped by RecordingControls, processing transcription...');
+      logger.debug('Recording already stopped by RecordingControls, processing transcription...');
 
       // Wait for transcription to complete
       setStatus(RecordingStatus.PROCESSING_TRANSCRIPTS, 'Waiting for transcription...');
-      console.log('Waiting for transcription to complete...');
+      logger.debug('Waiting for transcription to complete...');
 
       const MAX_WAIT_TIME = 60000; // 60 seconds maximum wait (increased for longer processing)
       const POLL_INTERVAL = 500; // Check every 500ms
@@ -152,7 +152,7 @@ export function useRecordingStop(
 
       // Listen for transcription-complete event
       const unlistenComplete = await listen('transcription-complete', () => {
-        console.log('Received transcription-complete event');
+        logger.debug('Received transcription-complete event');
         transcriptionComplete = true;
       });
 
@@ -160,25 +160,25 @@ export function useRecordingStop(
       while (elapsedTime < MAX_WAIT_TIME && !transcriptionComplete) {
         try {
           const status = await transcriptService.getTranscriptionStatus();
-          console.log('Transcription status:', status);
+          logger.debug('Transcription status:', status);
 
           // Check if transcription is complete
           if (!status.is_processing && status.chunks_in_queue === 0) {
-            console.log('Transcription complete - no active processing and no chunks in queue');
+            logger.debug('Transcription complete - no active processing and no chunks in queue');
             transcriptionComplete = true;
             break;
           }
 
           // If no activity for more than 8 seconds and no chunks in queue, consider it done (increased from 5s to 8s)
           if (status.last_activity_ms > 8000 && status.chunks_in_queue === 0) {
-            console.log('Transcription likely complete - no recent activity and empty queue');
+            logger.debug('Transcription likely complete - no recent activity and empty queue');
             transcriptionComplete = true;
             break;
           }
 
           // Update user with current status
           if (status.chunks_in_queue > 0) {
-            console.log(`Processing ${status.chunks_in_queue} remaining audio chunks...`);
+            logger.debug(`Processing ${status.chunks_in_queue} remaining audio chunks...`);
             setStatus(RecordingStatus.PROCESSING_TRANSCRIPTS, `Processing ${status.chunks_in_queue} remaining chunks...`);
           }
 
@@ -192,21 +192,21 @@ export function useRecordingStop(
       }
 
       // Clean up listener
-      console.log('🧹 CLEANUP: Cleaning up transcription-complete listener');
+      logger.debug('🧹 CLEANUP: Cleaning up transcription-complete listener');
       unlistenComplete();
 
       if (!transcriptionComplete && elapsedTime >= MAX_WAIT_TIME) {
         console.warn('⏰ Transcription wait timeout reached after', elapsedTime, 'ms');
       } else {
-        console.log('✅ Transcription completed after', elapsedTime, 'ms');
+        logger.debug('✅ Transcription completed after', elapsedTime, 'ms');
         // Wait longer for any late transcript segments (increased from 1s to 4s)
-        console.log('⏳ Waiting for late transcript segments...');
+        logger.debug('⏳ Waiting for late transcript segments...');
         await new Promise(resolve => setTimeout(resolve, 4000));
       }
 
       // Final buffer flush: process ALL remaining transcripts regardless of timing
       const flushStartTime = Date.now();
-      console.log('🔄 Final buffer flush: forcing processing of any remaining transcripts...', {
+      logger.debug('🔄 Final buffer flush: forcing processing of any remaining transcripts...', {
         flush_started_at: new Date(flushStartTime).toISOString(),
         time_since_stop: flushStartTime - stopStartTime,
         current_transcript_count: transcriptsRef.current.length
@@ -214,7 +214,7 @@ export function useRecordingStop(
       setStatus(RecordingStatus.PROCESSING_TRANSCRIPTS, 'Flushing transcript buffer...');
       flushBuffer();
       const flushEndTime = Date.now();
-      console.log('✅ Final buffer flush completed', {
+      logger.debug('✅ Final buffer flush completed', {
         flush_duration: flushEndTime - flushStartTime,
         total_time_since_stop: flushEndTime - stopStartTime,
         final_transcript_count: transcriptsRef.current.length
@@ -223,7 +223,7 @@ export function useRecordingStop(
       // NOTE: Status remains PROCESSING_TRANSCRIPTS until we start saving
 
       // Wait a bit more to ensure all transcript state updates have been processed
-      console.log('Waiting for transcript state updates to complete...');
+      logger.debug('Waiting for transcript state updates to complete...');
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Save to SQLite
@@ -240,7 +240,7 @@ export function useRecordingStop(
         const folderPath = sessionStorage.getItem('last_recording_folder_path');
         const savedMeetingName = sessionStorage.getItem('last_recording_meeting_name');
 
-        console.log('💾 Saving COMPLETE transcripts to database...', {
+        logger.debug('💾 Saving COMPLETE transcripts to database...', {
           transcript_count: freshTranscripts.length,
           meeting_name: savedMeetingName || meetingTitle,
           folder_path: folderPath,
@@ -261,9 +261,9 @@ export function useRecordingStop(
             throw new Error('No meeting ID received from save operation');
           }
 
-          console.log('✅ Successfully saved COMPLETE meeting with ID:', meetingId);
-          console.log('   Transcripts:', freshTranscripts.length);
-          console.log('   folder_path:', folderPath);
+          logger.debug('✅ Successfully saved COMPLETE meeting with ID:', meetingId);
+          logger.debug('   Transcripts:', freshTranscripts.length);
+          logger.debug('   folder_path:', folderPath);
 
           // Mark meeting as saved in IndexedDB (for recovery system)
           await markMeetingAsSaved();
@@ -284,7 +284,7 @@ export function useRecordingStop(
                 id: meetingId,
                 title: meetingData.title
               });
-              console.log('✅ Current meeting set:', meetingData.title);
+              logger.debug('✅ Current meeting set:', meetingData.title);
             }
           } catch (error) {
             console.warn('Could not fetch meeting details, using ID only:', error);
@@ -381,19 +381,18 @@ export function useRecordingStop(
       }
 
       setIsMeetingActive(false);
-      // isRecording already set to false at function start
+      // isRecording is derived from RecordingStateContext
       setIsRecordingDisabled(false);
     } catch (error) {
       console.error('Error in handleRecordingStop:', error);
       setStatus(RecordingStatus.ERROR, error instanceof Error ? error.message : 'Unknown error');
-      // isRecording already set to false at function start
+      // isRecording is derived from RecordingStateContext
       setIsRecordingDisabled(false);
     } finally {
       // Always reset the guard flag when done
       stopInProgressRef.current = false;
     }
   }, [
-    setIsRecording,
     setIsRecordingDisabled,
     setStatus,
     transcriptsRef,
@@ -416,13 +415,14 @@ export function useRecordingStop(
   });
 
   useEffect(() => {
-    (window as any).handleRecordingStop = (callApi: boolean = true) => {
+    const w = window as unknown as { handleRecordingStop?: (callApi: boolean) => void };
+    w.handleRecordingStop = (callApi: boolean = true) => {
       handleRecordingStopRef.current(callApi);
     };
 
     // Cleanup on unmount
     return () => {
-      delete (window as any).handleRecordingStop;
+      delete w.handleRecordingStop;
     };
   }, []);
 

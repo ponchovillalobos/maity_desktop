@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
 import { isOllamaNotInstalledError } from '@/lib/utils';
 import { BuiltInModelInfo } from '@/lib/builtin-ai';
+import { logger } from '@/lib/logger';
 
 interface SummaryGeneratorButtonGroupProps {
   modelConfig: ModelConfig;
@@ -64,7 +65,7 @@ export function SummaryGeneratorButtonGroup({
       // Register our open dialog function with the parent by calling the callback
       // This allows the parent to store a reference to this function
       const openDialog = () => {
-        console.log('📱 Opening model settings dialog via callback');
+        logger.debug('📱 Opening model settings dialog via callback');
         setSettingsDialogOpen(true);
       };
 
@@ -192,7 +193,7 @@ export function SummaryGeneratorButtonGroup({
     setIsCheckingModels(true);
     try {
       const endpoint = modelConfig.ollamaEndpoint || null;
-      const models = await invoke('get_ollama_models', { endpoint }) as any[];
+      const models = await invoke('get_ollama_models', { endpoint }) as { name: string }[];
 
       if (!models || models.length === 0) {
         // No models available, show message and open settings
@@ -251,6 +252,7 @@ export function SummaryGeneratorButtonGroup({
             onStopGeneration();
           }}
           title="Detener generación de resumen"
+          aria-label="Stop summary generation"
         >
           <Square className="xl:mr-2" size={18} fill="currentColor" />
           <span className="hidden lg:inline xl:inline">Detener</span>
@@ -272,6 +274,7 @@ export function SummaryGeneratorButtonGroup({
                 ? 'Verificando modelos...'
                 : 'Generar Resumen con IA'
           }
+          aria-label="Generate AI summary"
         >
           {isCheckingModels || isModelConfigLoading ? (
             <>
@@ -294,14 +297,13 @@ export function SummaryGeneratorButtonGroup({
             variant="outline"
             size="sm"
             title="Configuración de Resumen"
+            aria-label="Model settings"
           >
             <Settings />
             <span className="hidden lg:inline">Modelo IA</span>
           </Button>
         </DialogTrigger>
-        <DialogContent
-          aria-describedby={undefined}
-        >
+        <DialogContent>
           <VisuallyHidden>
             <DialogTitle>Configuración de Modelo</DialogTitle>
           </VisuallyHidden>
@@ -325,6 +327,7 @@ export function SummaryGeneratorButtonGroup({
               variant="outline"
               size="sm"
               title="Seleccionar plantilla de resumen"
+              aria-label="Select summary template"
             >
               <FileText />
               <span className="hidden lg:inline">Plantilla</span>

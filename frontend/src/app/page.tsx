@@ -17,21 +17,25 @@ import { useRecordingStateSync } from '@/hooks/useRecordingStateSync';
 import { useRecordingStart } from '@/hooks/useRecordingStart';
 import { useRecordingStop } from '@/hooks/useRecordingStop';
 import { useTranscriptRecovery } from '@/hooks/useTranscriptRecovery';
+import { useWindowCloseGuard } from '@/hooks/useWindowCloseGuard';
+import { useRecordingLevels } from '@/hooks/useRecordingLevels';
 import { TranscriptRecovery } from '@/components/TranscriptRecovery';
 import { indexedDBService } from '@/services/indexedDBService';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 export default function Home() {
   // Local page state (not moved to contexts)
-  const [isRecording, setIsRecordingState] = useState(false);
-  const [barHeights, setBarHeights] = useState(['58%', '76%', '58%']);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
 
   // Use contexts for state management
   const { meetingTitle } = useTranscripts();
   const { transcriptModelConfig, selectedDevices } = useConfig();
   const recordingState = useRecordingState();
+
+  // Derive isRecording from global recording state (single source of truth)
+  const isRecording = recordingState.isRecording;
 
   // Extract status from global state
   const { status, isStopping, isProcessing, isSaving } = recordingState;
@@ -40,12 +44,11 @@ export default function Home() {
   const { hasMicrophone } = usePermissionCheck();
   const { setIsMeetingActive, isCollapsed: sidebarCollapsed, refetchMeetings } = useSidebar();
   const { modals, messages, showModal, hideModal } = useModalState(transcriptModelConfig);
-  const { isRecordingDisabled, setIsRecordingDisabled } = useRecordingStateSync(isRecording, setIsRecordingState, setIsMeetingActive);
-  const { handleRecordingStart } = useRecordingStart(isRecording, setIsRecordingState, showModal);
+  const { isRecordingDisabled, setIsRecordingDisabled } = useRecordingStateSync(isRecording, setIsMeetingActive);
+  const { handleRecordingStart } = useRecordingStart(isRecording, showModal);
 
   // Get handleRecordingStop function and setIsStopping (state comes from global context)
   const { handleRecordingStop, setIsStopping } = useRecordingStop(
-    setIsRecordingState,
     setIsRecordingDisabled
   );
 
@@ -59,6 +62,12 @@ export default function Home() {
     loadMeetingTranscripts,
     deleteRecoverableMeeting
   } = useTranscriptRecovery();
+
+  // Guard against accidental window close during recording
+  useWindowCloseGuard(isRecording);
+
+  // Real audio level meters from pipeline
+  const audioLevels = useRecordingLevels(isRecording);
 
   const router = useRouter();
 
@@ -77,7 +86,7 @@ export default function Home() {
           status === RecordingStatus.STOPPING ||
           status === RecordingStatus.PROCESSING_TRANSCRIPTS ||
           status === RecordingStatus.SAVING) {
-          console.log('Skipping recovery check - recording in progress or processing');
+          logger.debug('Skipping recovery check - recording in progress or processing');
           return;
         }
 
@@ -170,22 +179,6 @@ export default function Home() {
     }
   };
 
-  useEffect(() => {
-    if (recordingState.isRecording) {
-      const interval = setInterval(() => {
-        setBarHeights(prev => {
-          const newHeights = [...prev];
-          newHeights[0] = Math.random() * 20 + 10 + 'px';
-          newHeights[1] = Math.random() * 20 + 10 + 'px';
-          newHeights[2] = Math.random() * 20 + 10 + 'px';
-          return newHeights;
-        });
-      }, 300);
-
-      return () => clearInterval(interval);
-    }
-  }, [recordingState.isRecording]);
-
   // Computed values using global status
   const isProcessingStop = status === RecordingStatus.PROCESSING_TRANSCRIPTS || isProcessing;
 
@@ -194,6 +187,7 @@ export default function Home() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
+      id="main-content"
       className="flex flex-col h-screen bg-[#f5f5f6] dark:bg-gray-950"
     >
       {/* All Modals supported*/}
@@ -238,7 +232,7 @@ export default function Home() {
                       onRecordingStart={handleRecordingStart}
                       onTranscriptReceived={() => { }} // Not actually used by RecordingControls
                       onStopInitiated={() => setIsStopping(true)}
-                      barHeights={barHeights}
+                      audioLevels={audioLevels}
                       onTranscriptionError={(message) => {
                         showModal('errorAlert', message);
                       }}

@@ -105,13 +105,6 @@ impl ModelMetadataCache {
         Ok(metadata)
     }
 
-    /// Clear all cached entries (useful for testing or manual refresh)
-    #[allow(dead_code)]
-    pub async fn clear(&self) {
-        let mut cache = self.cache.write().await;
-        cache.clear();
-        tracing::info!("Model metadata cache cleared");
-    }
 }
 
 /// Default context sizes for common model families (fallback when API fails)

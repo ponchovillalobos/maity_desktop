@@ -17,9 +17,12 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Lock, Unlock, Eye, EyeOff } from 'lucide-react';
 import { cn, isOllamaNotInstalledError } from '@/lib/utils';
+import type { BuiltInModelInfo } from '@/lib/builtin-ai';
+import type { CustomOpenAIConfig } from '@/services/configService';
 import { toast } from 'sonner';
 import { OllamaSettings } from './ModelSettings/OllamaSettings';
 import { CustomOpenAISettings } from './ModelSettings/CustomOpenAISettings';
+import { logger } from '@/lib/logger';
 
 export interface ModelConfig {
   provider: 'ollama' | 'groq' | 'claude' | 'openai' | 'openrouter' | 'builtin-ai' | 'custom-openai';
@@ -28,6 +31,7 @@ export interface ModelConfig {
   apiKey?: string | null;
   ollamaEndpoint?: string | null;
   // Custom OpenAI fields
+  customOpenAIDisplayName?: string | null;
   customOpenAIEndpoint?: string | null;
   customOpenAIModel?: string | null;
   customOpenAIApiKey?: string | null;
@@ -105,7 +109,7 @@ export function ModelSettingsModal({
   const { isDownloading, getProgress, downloadingModels } = useOllamaDownload();
 
   // Built-in AI models state
-  const [builtinAiModels, setBuiltinAiModels] = useState<any[]>([]);
+  const [builtinAiModels, setBuiltinAiModels] = useState<BuiltInModelInfo[]>([]);
 
   // Cache models by endpoint to avoid refetching when reverting endpoint changes
   const modelsCache = useRef<Map<string, OllamaModel[]>>(new Map());
@@ -229,7 +233,7 @@ export function ModelSettingsModal({
       }
 
       try {
-        const data = (await invoke('api_get_model_config')) as any;
+        const data = (await invoke('api_get_model_config')) as ModelConfig;
         if (data && data.provider !== null) {
           setModelConfig(data);
 
@@ -256,7 +260,7 @@ export function ModelSettingsModal({
           // Fetch Custom OpenAI config if that's the active provider
           if (data.provider === 'custom-openai') {
             try {
-              const customConfig = (await invoke('api_get_custom_openai_config')) as any;
+              const customConfig = (await invoke('api_get_custom_openai_config')) as CustomOpenAIConfig | null;
               if (customConfig) {
                 setCustomOpenAIEndpoint(customConfig.endpoint || '');
                 setCustomOpenAIModel(customConfig.model || '');
@@ -285,7 +289,7 @@ export function ModelSettingsModal({
       try {
         const enabled = (await invoke('api_get_auto_generate_setting')) as boolean;
         setAutoGenerateEnabled(enabled);
-        console.log('Auto-generate setting loaded:', enabled);
+        logger.debug('Auto-generate setting loaded:', enabled);
       } catch (err) {
         console.error('Failed to fetch auto-generate setting:', err);
         // Keep default value (true) on error
@@ -311,7 +315,7 @@ export function ModelSettingsModal({
   // Sync custom OpenAI state from modelConfig (context or props)
   useEffect(() => {
     if (modelConfig.provider === 'custom-openai') {
-      console.log('🔄 Syncing custom OpenAI fields from ConfigContext:', {
+      logger.debug('🔄 Syncing custom OpenAI fields from ConfigContext:', {
         endpoint: modelConfig.customOpenAIEndpoint,
         model: modelConfig.customOpenAIModel,
         hasApiKey: !!modelConfig.customOpenAIApiKey,
@@ -462,12 +466,12 @@ export function ModelSettingsModal({
     if (builtinAiModels.length > 0) return; // Already loaded
 
     try {
-      const data = (await invoke('builtin_ai_list_models')) as any[];
+      const data = (await invoke('builtin_ai_list_models')) as BuiltInModelInfo[];
       setBuiltinAiModels(data);
 
       // Auto-select first available model if none selected
       if (data.length > 0 && !modelConfig.model) {
-        const firstAvailable = data.find((m: any) => m.status?.type === 'available');
+        const firstAvailable = data.find((m) => m.status?.type === 'available');
         if (firstAvailable) {
           setModelConfig((prev: ModelConfig) => ({ ...prev, model: firstAvailable.name }));
         }
@@ -490,7 +494,7 @@ export function ModelSettingsModal({
           temperature: customTemperature ? parseFloat(customTemperature) : null,
           topP: customTopP ? parseFloat(customTopP) : null,
         });
-        console.log('Custom OpenAI config saved successfully');
+        logger.debug('Custom OpenAI config saved successfully');
       } catch (err) {
         console.error('Failed to save custom OpenAI config:', err);
         toast.error('Error al guardar configuración de Custom OpenAI');
@@ -515,7 +519,7 @@ export function ModelSettingsModal({
       model: modelConfig.provider === 'custom-openai' ? customOpenAIModel.trim() : modelConfig.model,
     };
     setModelConfig(updatedConfig);
-    console.log('ModelSettingsModal - handleSave - Updated ModelConfig:', updatedConfig);
+    logger.debug('ModelSettingsModal - handleSave - Updated ModelConfig:', updatedConfig);
 
     onSave(updatedConfig);
   };
@@ -628,7 +632,7 @@ export function ModelSettingsModal({
     for (const modelName of previous) {
       if (!current.has(modelName)) {
         // Download completed, refresh models list
-        console.log(`[ModelSettingsModal] Download completed for ${modelName}, refreshing list`);
+        logger.debug(`[ModelSettingsModal] Download completed for ${modelName}, refreshing list`);
         fetchOllamaModels(true);
         break; // Only refresh once even if multiple completed
       }
@@ -696,7 +700,7 @@ export function ModelSettingsModal({
 
                 // Load custom OpenAI config when selected
                 if (provider === 'custom-openai') {
-                  invoke<any>('api_get_custom_openai_config').then((config) => {
+                  invoke<CustomOpenAIConfig | null>('api_get_custom_openai_config').then((config) => {
                     if (config) {
                       setCustomOpenAIEndpoint(config.endpoint || '');
                       setCustomOpenAIModel(config.model || '');

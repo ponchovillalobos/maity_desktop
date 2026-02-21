@@ -53,10 +53,10 @@ export function LogExporter() {
       })
       // Refresh log info after export
       loadLogInfo()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to export logs:', error)
       toast.error('Error al exportar logs', {
-        description: error?.toString() || 'Error desconocido',
+        description: error instanceof Error ? error.message : String(error ?? 'Error desconocido'),
       })
     } finally {
       setIsExporting(false)
@@ -66,10 +66,10 @@ export function LogExporter() {
   const handleOpenLogDirectory = async () => {
     try {
       await invoke('open_log_directory')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to open log directory:', error)
       toast.error('Error al abrir carpeta de logs', {
-        description: error?.toString() || 'Error desconocido',
+        description: error instanceof Error ? error.message : String(error ?? 'Error desconocido'),
       })
     }
   }
@@ -85,10 +85,10 @@ export function LogExporter() {
       }
       // Refresh log info after clearing
       loadLogInfo()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to clear old logs:', error)
       toast.error('Error al limpiar logs', {
-        description: error?.toString() || 'Error desconocido',
+        description: error instanceof Error ? error.message : String(error ?? 'Error desconocido'),
       })
     } finally {
       setIsClearing(false)
@@ -120,6 +120,7 @@ export function LogExporter() {
           variant="outline"
           size="sm"
           className="text-xs"
+          aria-label="Export logs"
         >
           {isExporting ? (
             <>
@@ -140,6 +141,7 @@ export function LogExporter() {
           variant="outline"
           size="sm"
           className="text-xs"
+          aria-label="Open log directory"
         >
           <FolderOpen className="h-3 w-3 mr-2" />
           Abrir Carpeta
@@ -151,6 +153,7 @@ export function LogExporter() {
           variant="outline"
           size="sm"
           className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+          aria-label="Clear old logs"
         >
           {isClearing ? (
             <>

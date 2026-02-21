@@ -4,6 +4,8 @@
  * to enable recovery after app crashes or unexpected closures.
  */
 
+import { logger } from '@/lib/logger';
+
 // Database schema interfaces
 export interface MeetingMetadata {
   meetingId: string;          // Primary key: "meeting-{timestamp}"
@@ -26,7 +28,7 @@ export interface StoredTranscript {
   audio_start_time?: number;  // Recording-relative start time in seconds
   audio_end_time?: number;    // Recording-relative end time in seconds
   duration?: number;          // Duration in seconds
-  [key: string]: any;         // Allow additional fields from TranscriptUpdate
+  [key: string]: unknown;  // Allow additional fields from TranscriptUpdate
 }
 
 class IndexedDBService {
@@ -227,15 +229,15 @@ class IndexedDBService {
   /**
    * Save a transcript segment
    */
-  async saveTranscript(meetingId: string, transcript: any): Promise<void> {
+  async saveTranscript(meetingId: string, transcript: Record<string, unknown>): Promise<void> {
     try {
       if (!this.db) await this.init();
 
-      const storedTranscript: StoredTranscript = {
+      const storedTranscript = {
         ...transcript,
         meetingId,
         storedAt: Date.now()
-      };
+      } as StoredTranscript;
 
       const transaction = this.db!.transaction(['transcripts', 'meetings'], 'readwrite');
       const transcriptsStore = transaction.objectStore('transcripts');
@@ -360,7 +362,7 @@ class IndexedDBService {
         }
       }
 
-      console.log(`Cleaned up ${deletedCount} old meetings`);
+      logger.debug(`Cleaned up ${deletedCount} old meetings`);
       return deletedCount;
     } catch (error) {
       console.error('Failed to delete old meetings:', error);
@@ -410,7 +412,7 @@ class IndexedDBService {
         }
       }
 
-      console.log(`Cleaned up ${deletedCount} saved meetings`);
+      logger.debug(`Cleaned up ${deletedCount} saved meetings`);
       return deletedCount;
     } catch (error) {
       console.error('Failed to delete saved meetings:', error);

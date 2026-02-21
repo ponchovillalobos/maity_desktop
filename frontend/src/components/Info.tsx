@@ -10,7 +10,7 @@ interface InfoProps {
 
 const Info = React.forwardRef<HTMLButtonElement, InfoProps>(({ isCollapsed }, ref) => {
   return (
-    <Dialog aria-describedby={undefined}>
+    <Dialog>
       <DialogTrigger asChild>
         <button 
           ref={ref} 

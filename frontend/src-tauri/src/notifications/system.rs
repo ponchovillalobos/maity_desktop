@@ -72,13 +72,6 @@ impl<R: Runtime> SystemNotificationHandler<R> {
         Ok(true)
     }
 
-    /// Show a test notification to verify the system is working
-    #[allow(dead_code)] // Used by show_test_notification command for manual testing
-    async fn show_test_notification(&self) -> Result<()> {
-        let test_notification = Notification::test_notification();
-        self.show_notification(test_notification).await
-    }
-
     /// Determine if we should respect DND for this notification
     fn should_respect_dnd(&self, notification: &Notification) -> bool {
         match notification.priority {

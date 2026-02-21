@@ -48,6 +48,12 @@ pub async fn select_legacy_database_path(app: AppHandle) -> Result<Option<String
 pub async fn detect_legacy_database(selected_path: String) -> Result<Option<String>, String> {
     let path = PathBuf::from(&selected_path);
 
+    // Validate against directory traversal
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+
     info!("Detecting legacy database from path: {}", selected_path);
 
     // Case 1: User selected the .db file directly
@@ -201,11 +207,11 @@ pub async fn initialize_fresh_database(app: AppHandle) -> Result<(), String> {
         error!("Failed to set default summary model config: {}", e);
     }
 
-    // Default Transcription Model: Deepgram (cloud)
+    // Default Transcription Model: Parakeet (privacy-first, optimized for CPU)
     if let Err(e) = crate::database::repositories::setting::SettingsRepository::save_transcript_config(
         pool,
-        "deepgram",       // Changed from "parakeet" for cloud-only mode
-        "nova-2",         // Deepgram's best model
+        "parakeet",
+        "parakeet-tdt-0.6b-v3-int8",
     ).await {
         error!("Failed to set default transcription model config: {}", e);
     }

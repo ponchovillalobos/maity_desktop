@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { TranscriptUpdate, Transcript } from '@/types';
+import { logger } from '@/lib/logger';
 
 export interface TranscriptionStatus {
   chunks_in_queue: number;
@@ -54,9 +55,9 @@ export class TranscriptService {
    * @returns Promise that resolves to unlisten function
    */
   async onTranscriptUpdate(callback: (update: TranscriptUpdate) => void): Promise<UnlistenFn> {
-    console.log('📡 [SERVICE] Registrando listener para transcript-update...');
+    logger.debug('📡 [SERVICE] Registrando listener para transcript-update...');
     return listen<TranscriptUpdate>('transcript-update', (event) => {
-      console.log('📥 [SERVICE] Evento transcript-update recibido:', {
+      logger.debug('📥 [SERVICE] Evento transcript-update recibido:', {
         text: event.payload.text?.substring(0, 50) + '...',
         sequence_id: event.payload.sequence_id,
         is_partial: event.payload.is_partial,

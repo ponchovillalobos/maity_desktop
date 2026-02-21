@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { PermissionRow } from '../shared';
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 export function PermissionsStep() {
   const { setPermissionStatus, setPermissionsSkipped, permissions, completeOnboarding } = useOnboarding();
@@ -13,9 +15,9 @@ export function PermissionsStep() {
   // Check permissions - only logs current state, doesn't auto-authorize
   // Actual permission checks are done via explicit user actions (clicking Enable)
   const checkPermissions = useCallback(async () => {
-    console.log('[PermissionsStep] Current permission states:');
-    console.log(`  - Microphone: ${permissions.microphone}`);
-    console.log(`  - System Audio: ${permissions.systemAudio}`);
+    logger.debug('[PermissionsStep] Current permission states:');
+    logger.debug(`  - Microphone: ${permissions.microphone}`);
+    logger.debug(`  - System Audio: ${permissions.systemAudio}`);
     // Don't auto-set permissions based on device availability
     // Permissions should only be set after explicit user action via Enable button
   }, [permissions.microphone, permissions.systemAudio]);
@@ -32,16 +34,16 @@ export function PermissionsStep() {
       try {
         await invoke('open_system_settings');
       } catch {
-        alert('Por favor habilita el acceso al micrófono en Preferencias del Sistema > Seguridad y Privacidad > Micrófono');
+        toast.warning('Por favor habilita el acceso al micrófono en Preferencias del Sistema > Seguridad y Privacidad > Micrófono', { duration: 8000 });
       }
       return;
     }
 
     setIsPending(true);
     try {
-      console.log('[PermissionsStep] Triggering microphone permission...');
+      logger.debug('[PermissionsStep] Triggering microphone permission...');
       const granted = await invoke<boolean>('trigger_microphone_permission');
-      console.log('[PermissionsStep] Microphone permission result:', granted);
+      logger.debug('[PermissionsStep] Microphone permission result:', granted);
 
       if (granted) {
         setPermissionStatus('microphone', 'authorized');
@@ -64,26 +66,26 @@ export function PermissionsStep() {
       try {
         await invoke('open_system_settings');
       } catch {
-        alert('Por favor habilita la Captura de Audio en Configuración del Sistema → Privacidad y Seguridad → Captura de Audio');
+        toast.warning('Por favor habilita la Captura de Audio en Configuración del Sistema → Privacidad y Seguridad → Captura de Audio', { duration: 8000 });
       }
       return;
     }
 
     setIsPending(true);
     try {
-      console.log('[PermissionsStep] Triggering Audio Capture permission...');
+      logger.debug('[PermissionsStep] Triggering Audio Capture permission...');
       // Backend creates Core Audio tap, captures audio, and verifies it's not silence
       // Returns true if permission granted and audio verified, false if denied (silence)
       const granted = await invoke<boolean>('trigger_system_audio_permission_command');
-      console.log('[PermissionsStep] System audio permission result:', granted);
+      logger.debug('[PermissionsStep] System audio permission result:', granted);
 
       if (granted) {
         setPermissionStatus('systemAudio', 'authorized');
-        console.log('[PermissionsStep] Audio Capture permission verified - audio is not silence');
+        logger.debug('[PermissionsStep] Audio Capture permission verified - audio is not silence');
       } else {
         // Permission was denied (audio is silence)
         setPermissionStatus('systemAudio', 'denied');
-        console.log('[PermissionsStep] Audio Capture permission denied - audio is silence');
+        logger.debug('[PermissionsStep] Audio Capture permission denied - audio is silence');
       }
     } catch (err) {
       console.error('[PermissionsStep] Failed to request system audio permission:', err);

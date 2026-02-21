@@ -40,7 +40,12 @@ function detectGPU() {
         console.log('🟢 NVIDIA GPU detected with CUDA - using CUDA acceleration');
         return 'cuda';
       } else {
-        console.log('⚠️  NVIDIA GPU detected but CUDA not installed - falling back to CPU');
+        console.log('⚠️  NVIDIA GPU detected but CUDA Toolkit not installed');
+        console.log('   📥 Para activar GPU (5-10x más rápido):');
+        console.log('   1. Descarga CUDA Toolkit: https://developer.nvidia.com/cuda-downloads');
+        console.log('   2. Instálalo (incluye nvcc y libraries)');
+        console.log('   3. Reinicia el terminal y reconstruye la app');
+        console.log('   ⏩ Continuando en modo CPU-only...');
         return null;
       }
     }

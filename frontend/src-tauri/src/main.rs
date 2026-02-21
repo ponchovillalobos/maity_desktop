@@ -73,6 +73,21 @@ fn setup_panic_hook() {
 }
 
 fn main() {
+    // Auto-allocate debug console on Windows release builds.
+    // MUST be before init_file_logging so Rust's stdout is connected to the console
+    // from the start — otherwise println! and tracing console output go to /dev/null.
+    // This is a temporary debugging aid; remove once transcription is confirmed working.
+    #[cfg(all(not(debug_assertions), target_os = "windows"))]
+    {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn AllocConsole() -> i32;
+        }
+        unsafe {
+            let _ = AllocConsole();
+        }
+    }
+
     // Initialize file logging with rotation (writes to both console and file)
     if let Err(e) = app_lib::logging::init_file_logging("Maity") {
         // Fallback to basic console output if file logging fails

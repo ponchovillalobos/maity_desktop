@@ -55,7 +55,7 @@ export interface Summary {
 export interface ApiResponse {
   message: string;
   num_chunks: number;
-  data: any[];
+  data: Record<string, unknown>[];
 }
 
 export interface SummaryResponse {
@@ -75,8 +75,8 @@ export type SummaryFormat = 'legacy' | 'markdown' | 'blocknote';
 export interface BlockNoteBlock {
   id: string;
   type: string;
-  props?: Record<string, any>;
-  content?: any[];
+  props?: Record<string, string | number | boolean>;
+  content?: Array<{ type: string; text?: string; styles?: Record<string, string | boolean> }>;
   children?: BlockNoteBlock[];
 }
 
@@ -86,7 +86,7 @@ export interface SummaryDataResponse {
   // Legacy format fields
   MeetingName?: string;
   _section_order?: string[];
-  [key: string]: any; // For legacy section data
+  [key: string]: unknown; // For legacy section data
 }
 
 // Pagination types for optimized transcript loading

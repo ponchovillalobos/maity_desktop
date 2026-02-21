@@ -5,13 +5,13 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Eye, EyeOff, Lock, Unlock, Save, Loader2, CheckCircle } from 'lucide-react';
-import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
+import { CanaryModelManager } from './CanaryModelManager';
 import { toast } from 'sonner';
 
 
 export interface TranscriptModelProps {
-    provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+    provider: 'parakeet' | 'canary' | 'elevenLabs' | 'groq' | 'openai';
     model: string;
     apiKey?: string | null;
 }
@@ -27,8 +27,8 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const [showApiKey, setShowApiKey] = useState<boolean>(false);
     const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
     const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
-    const [selectedWhisperModel, setSelectedWhisperModel] = useState<string>(transcriptModelConfig.provider === 'localWhisper' ? transcriptModelConfig.model : 'small');
     const [selectedParakeetModel, setSelectedParakeetModel] = useState<string>(transcriptModelConfig.provider === 'parakeet' ? transcriptModelConfig.model : 'parakeet-tdt-0.6b-v3-int8');
+    const [selectedCanaryModel, setSelectedCanaryModel] = useState<string>(transcriptModelConfig.provider === 'canary' ? transcriptModelConfig.model : 'canary-1b-flash-int8');
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
@@ -67,7 +67,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     };
 
     useEffect(() => {
-        if (transcriptModelConfig.provider === 'localWhisper' || transcriptModelConfig.provider === 'parakeet') {
+        if (transcriptModelConfig.provider === 'parakeet' || transcriptModelConfig.provider === 'canary') {
             setApiKey(null);
         }
     }, [transcriptModelConfig.provider]);
@@ -84,33 +84,18 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
         }
     };
     const modelOptions = {
-        localWhisper: [selectedWhisperModel],
         parakeet: [selectedParakeetModel],
-        deepgram: ['nova-2', 'nova-2-phonecall', 'nova-2-meeting'],
+        canary: [selectedCanaryModel],
         elevenLabs: ['eleven_multilingual_v2'],
         groq: ['llama-3.3-70b-versatile'],
         openai: ['gpt-4o'],
     };
-    const requiresApiKey = transcriptModelConfig.provider === 'deepgram' || transcriptModelConfig.provider === 'elevenLabs' || transcriptModelConfig.provider === 'openai' || transcriptModelConfig.provider === 'groq';
+    const requiresApiKey = transcriptModelConfig.provider === 'elevenLabs' || transcriptModelConfig.provider === 'openai' || transcriptModelConfig.provider === 'groq';
 
     const handleInputClick = () => {
         if (isApiKeyLocked) {
             setIsLockButtonVibrating(true);
             setTimeout(() => setIsLockButtonVibrating(false), 500);
-        }
-    };
-
-    const handleWhisperModelSelect = (modelName: string) => {
-        setSelectedWhisperModel(modelName);
-        if (transcriptModelConfig.provider === 'localWhisper') {
-            setTranscriptModelConfig({
-                ...transcriptModelConfig,
-                model: modelName
-            });
-            // Close modal after selection
-            if (onModelSelect) {
-                onModelSelect();
-            }
         }
     };
 
@@ -122,6 +107,19 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                 model: modelName
             });
             // Close modal after selection
+            if (onModelSelect) {
+                onModelSelect();
+            }
+        }
+    };
+
+    const handleCanaryModelSelect = (modelName: string) => {
+        setSelectedCanaryModel(modelName);
+        if (transcriptModelConfig.provider === 'canary') {
+            setTranscriptModelConfig({
+                ...transcriptModelConfig,
+                model: modelName
+            });
             if (onModelSelect) {
                 onModelSelect();
             }
@@ -144,9 +142,9 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 value={transcriptModelConfig.provider}
                                 onValueChange={(value) => {
                                     const provider = value as TranscriptModelProps['provider'];
-                                    const newModel = provider === 'localWhisper' ? selectedWhisperModel : modelOptions[provider][0];
+                                    const newModel = modelOptions[provider][0];
                                     setTranscriptModelConfig({ ...transcriptModelConfig, provider, model: newModel });
-                                    if (provider !== 'localWhisper') {
+                                    if (provider !== 'parakeet' && provider !== 'canary') {
                                         fetchApiKey(provider);
                                     }
                                 }}
@@ -155,13 +153,12 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     <SelectValue placeholder="Seleccionar proveedor" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="deepgram">☁️ Deepgram (Recomendado - Nube)</SelectItem>
-                                    <SelectItem value="parakeet">⚡ Parakeet (Local - Tiempo Real)</SelectItem>
-                                    <SelectItem value="localWhisper">🏠 Whisper Local (Alta Precisión)</SelectItem>
+                                    <SelectItem value="parakeet">⚡ Parakeet (Recomendado - Local, Tiempo Real)</SelectItem>
+                                    <SelectItem value="canary">🐦 Canary (Local, Alta Precisión Español)</SelectItem>
                                 </SelectContent>
                             </Select>
 
-                            {transcriptModelConfig.provider !== 'localWhisper' && transcriptModelConfig.provider !== 'parakeet' && (
+                            {transcriptModelConfig.provider !== 'parakeet' && transcriptModelConfig.provider !== 'canary' && (
                                 <Select
                                     value={transcriptModelConfig.model}
                                     onValueChange={(value) => {
@@ -183,21 +180,21 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         </div>
                     </div>
 
-                    {transcriptModelConfig.provider === 'localWhisper' && (
-                        <div className="mt-6">
-                            <ModelManager
-                                selectedModel={selectedWhisperModel}
-                                onModelSelect={handleWhisperModelSelect}
-                                autoSave={true}
-                            />
-                        </div>
-                    )}
-
                     {transcriptModelConfig.provider === 'parakeet' && (
                         <div className="mt-6">
                             <ParakeetModelManager
                                 selectedModel={selectedParakeetModel}
                                 onModelSelect={handleParakeetModelSelect}
+                                autoSave={true}
+                            />
+                        </div>
+                    )}
+
+                    {transcriptModelConfig.provider === 'canary' && (
+                        <div className="mt-6">
+                            <CanaryModelManager
+                                selectedModel={selectedCanaryModel}
+                                onModelSelect={handleCanaryModelSelect}
                                 autoSave={true}
                             />
                         </div>
@@ -249,7 +246,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 </div>
                             </div>
                             <p className="text-xs text-[#6a6a6d] dark:text-gray-400 mt-2 mx-1">
-                                Obtén tu clave API desde <a href="https://console.deepgram.com/" target="_blank" rel="noopener noreferrer" className="text-[#3a4ac3] hover:underline">Consola de Deepgram</a>
+                                Ingresa la clave API del proveedor seleccionado.
                             </p>
                         </div>
                     )}

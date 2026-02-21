@@ -24,7 +24,7 @@ pub struct SaveTranscriptConfigRequest {
 
 pub struct SettingsRepository;
 
-// Transcript providers: localWhisper, deepgram, elevenLabs, groq, openai
+// Transcript providers: parakeet, canary, elevenLabs, groq, openai
 // Summary providers: openai, claude, ollama, groq, added openrouter
 // NOTE: Handle data exclusion in the higher layer as this is database abstraction layer(using SELECT *)
 
@@ -79,12 +79,9 @@ impl SettingsRepository {
             ));
         }
 
-        let api_key_column = match provider {
-            "openai" => "openaiApiKey",
-            "claude" => "anthropicApiKey",
-            "ollama" => "ollamaApiKey",
-            "groq" => "groqApiKey",
-            "openrouter" => "openRouterApiKey",
+        // Validate provider and handle early returns
+        match provider {
+            "openai" | "claude" | "ollama" | "groq" | "openrouter" => {},
             "builtin-ai" => return Ok(()), // No API key needed
             _ => {
                 return Err(sqlx::Error::Protocol(
@@ -93,16 +90,35 @@ impl SettingsRepository {
             }
         };
 
-        let query = format!(
-            r#"
-            INSERT INTO settings (id, provider, model, whisperModel, "{}")
+        let query = match provider {
+            "openai" => r#"
+            INSERT INTO settings (id, provider, model, whisperModel, "openaiApiKey")
             VALUES ('1', 'openai', 'gpt-4o-2024-11-20', 'large-v3', $1)
-            ON CONFLICT(id) DO UPDATE SET
-                "{}" = $1
+            ON CONFLICT(id) DO UPDATE SET "openaiApiKey" = $1
             "#,
-            api_key_column, api_key_column
-        );
-        sqlx::query(&query).bind(api_key).execute(pool).await?;
+            "claude" => r#"
+            INSERT INTO settings (id, provider, model, whisperModel, "anthropicApiKey")
+            VALUES ('1', 'openai', 'gpt-4o-2024-11-20', 'large-v3', $1)
+            ON CONFLICT(id) DO UPDATE SET "anthropicApiKey" = $1
+            "#,
+            "ollama" => r#"
+            INSERT INTO settings (id, provider, model, whisperModel, "ollamaApiKey")
+            VALUES ('1', 'openai', 'gpt-4o-2024-11-20', 'large-v3', $1)
+            ON CONFLICT(id) DO UPDATE SET "ollamaApiKey" = $1
+            "#,
+            "groq" => r#"
+            INSERT INTO settings (id, provider, model, whisperModel, "groqApiKey")
+            VALUES ('1', 'openai', 'gpt-4o-2024-11-20', 'large-v3', $1)
+            ON CONFLICT(id) DO UPDATE SET "groqApiKey" = $1
+            "#,
+            "openrouter" => r#"
+            INSERT INTO settings (id, provider, model, whisperModel, "openRouterApiKey")
+            VALUES ('1', 'openai', 'gpt-4o-2024-11-20', 'large-v3', $1)
+            ON CONFLICT(id) DO UPDATE SET "openRouterApiKey" = $1
+            "#,
+            _ => unreachable!(), // Already validated above
+        };
+        sqlx::query(query).bind(api_key).execute(pool).await?;
 
         Ok(())
     }
@@ -117,12 +133,9 @@ impl SettingsRepository {
             return Ok(config.and_then(|c| c.api_key));
         }
 
-        let api_key_column = match provider {
-            "openai" => "openaiApiKey",
-            "ollama" => "ollamaApiKey",
-            "groq" => "groqApiKey",
-            "claude" => "anthropicApiKey",
-            "openrouter" => "openRouterApiKey",
+        // Validate provider and handle early returns
+        match provider {
+            "openai" | "ollama" | "groq" | "claude" | "openrouter" => {},
             "builtin-ai" => return Ok(None), // No API key needed
             _ => {
                 return Err(sqlx::Error::Protocol(
@@ -131,11 +144,15 @@ impl SettingsRepository {
             }
         };
 
-        let query = format!(
-            "SELECT {} FROM settings WHERE id = '1' LIMIT 1",
-            api_key_column
-        );
-        let api_key = sqlx::query_scalar(&query).fetch_optional(pool).await?;
+        let query = match provider {
+            "openai" => "SELECT openaiApiKey FROM settings WHERE id = '1' LIMIT 1",
+            "ollama" => "SELECT ollamaApiKey FROM settings WHERE id = '1' LIMIT 1",
+            "groq" => "SELECT groqApiKey FROM settings WHERE id = '1' LIMIT 1",
+            "claude" => "SELECT anthropicApiKey FROM settings WHERE id = '1' LIMIT 1",
+            "openrouter" => "SELECT openRouterApiKey FROM settings WHERE id = '1' LIMIT 1",
+            _ => unreachable!(), // Already validated above
+        };
+        let api_key = sqlx::query_scalar(query).fetch_optional(pool).await?;
         Ok(api_key)
     }
 
@@ -177,13 +194,11 @@ impl SettingsRepository {
         provider: &str,
         api_key: &str,
     ) -> std::result::Result<(), sqlx::Error> {
-        let api_key_column = match provider {
-            "localWhisper" => "whisperApiKey",
+        // Validate provider and handle early returns
+        match provider {
             "parakeet" => return Ok(()), // Parakeet doesn't need an API key, return early
-            "deepgram" => "deepgramApiKey",
-            "elevenLabs" => "elevenLabsApiKey",
-            "groq" => "groqApiKey",
-            "openai" => "openaiApiKey",
+            "canary" => return Ok(()), // Canary doesn't need an API key
+            "elevenLabs" | "groq" | "openai" => {},
             _ => {
                 return Err(sqlx::Error::Protocol(
                     format!("Invalid provider: {}", provider).into(),
@@ -191,16 +206,25 @@ impl SettingsRepository {
             }
         };
 
-        let query = format!(
-            r#"
-            INSERT INTO transcript_settings (id, provider, model, "{}")
+        let query = match provider {
+            "elevenLabs" => r#"
+            INSERT INTO transcript_settings (id, provider, model, "elevenLabsApiKey")
             VALUES ('1', 'parakeet', 'parakeet-tdt-0.6b-v3-int8', $1)
-            ON CONFLICT(id) DO UPDATE SET
-                "{}" = $1
+            ON CONFLICT(id) DO UPDATE SET "elevenLabsApiKey" = $1
             "#,
-            api_key_column, api_key_column
-        );
-        sqlx::query(&query).bind(api_key).execute(pool).await?;
+            "groq" => r#"
+            INSERT INTO transcript_settings (id, provider, model, "groqApiKey")
+            VALUES ('1', 'parakeet', 'parakeet-tdt-0.6b-v3-int8', $1)
+            ON CONFLICT(id) DO UPDATE SET "groqApiKey" = $1
+            "#,
+            "openai" => r#"
+            INSERT INTO transcript_settings (id, provider, model, "openaiApiKey")
+            VALUES ('1', 'parakeet', 'parakeet-tdt-0.6b-v3-int8', $1)
+            ON CONFLICT(id) DO UPDATE SET "openaiApiKey" = $1
+            "#,
+            _ => unreachable!(), // Already validated above
+        };
+        sqlx::query(query).bind(api_key).execute(pool).await?;
 
         Ok(())
     }
@@ -209,13 +233,11 @@ impl SettingsRepository {
         pool: &SqlitePool,
         provider: &str,
     ) -> std::result::Result<Option<String>, sqlx::Error> {
-        let api_key_column = match provider {
-            "localWhisper" => "whisperApiKey",
+        // Validate provider and handle early returns
+        match provider {
             "parakeet" => return Ok(None), // Parakeet doesn't need an API key
-            "deepgram" => "deepgramApiKey",
-            "elevenLabs" => "elevenLabsApiKey",
-            "groq" => "groqApiKey",
-            "openai" => "openaiApiKey",
+            "canary" => return Ok(None), // Canary doesn't need an API key
+            "elevenLabs" | "groq" | "openai" => {},
             _ => {
                 return Err(sqlx::Error::Protocol(
                     format!("Invalid provider: {}", provider).into(),
@@ -223,11 +245,13 @@ impl SettingsRepository {
             }
         };
 
-        let query = format!(
-            "SELECT {} FROM transcript_settings WHERE id = '1' LIMIT 1",
-            api_key_column
-        );
-        let api_key = sqlx::query_scalar(&query).fetch_optional(pool).await?;
+        let query = match provider {
+            "elevenLabs" => "SELECT elevenLabsApiKey FROM transcript_settings WHERE id = '1' LIMIT 1",
+            "groq" => "SELECT groqApiKey FROM transcript_settings WHERE id = '1' LIMIT 1",
+            "openai" => "SELECT openaiApiKey FROM transcript_settings WHERE id = '1' LIMIT 1",
+            _ => unreachable!(), // Already validated above
+        };
+        let api_key = sqlx::query_scalar(query).fetch_optional(pool).await?;
         Ok(api_key)
     }
 
@@ -243,12 +267,9 @@ impl SettingsRepository {
             return Ok(());
         }
 
-        let api_key_column = match provider {
-            "openai" => "openaiApiKey",
-            "ollama" => "ollamaApiKey",
-            "groq" => "groqApiKey",
-            "claude" => "anthropicApiKey",
-            "openrouter" => "openRouterApiKey",
+        // Validate provider and handle early returns
+        match provider {
+            "openai" | "ollama" | "groq" | "claude" | "openrouter" => {},
             "builtin-ai" => return Ok(()), // No API key needed
             _ => {
                 return Err(sqlx::Error::Protocol(
@@ -257,11 +278,15 @@ impl SettingsRepository {
             }
         };
 
-        let query = format!(
-            "UPDATE settings SET {} = NULL WHERE id = '1'",
-            api_key_column
-        );
-        sqlx::query(&query).execute(pool).await?;
+        let query = match provider {
+            "openai" => "UPDATE settings SET openaiApiKey = NULL WHERE id = '1'",
+            "ollama" => "UPDATE settings SET ollamaApiKey = NULL WHERE id = '1'",
+            "groq" => "UPDATE settings SET groqApiKey = NULL WHERE id = '1'",
+            "claude" => "UPDATE settings SET anthropicApiKey = NULL WHERE id = '1'",
+            "openrouter" => "UPDATE settings SET openRouterApiKey = NULL WHERE id = '1'",
+            _ => unreachable!(), // Already validated above
+        };
+        sqlx::query(query).execute(pool).await?;
 
         Ok(())
     }

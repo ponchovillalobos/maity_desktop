@@ -27,6 +27,7 @@ import { MessageToast } from '../MessageToast';
 import Logo from '../Logo';
 import Info from '../Info';
 import { ComplianceNotification } from '../ComplianceNotification';
+import { logger } from '@/lib/logger';
 import { Input } from '../ui/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '../ui/input-group';
 import { SidebarControls } from './SidebarControls';
@@ -107,12 +108,12 @@ const Sidebar: React.FC = () => {
     const fetchModelConfig = async () => {
       // Only make API call if serverAddress is loaded
       if (!serverAddress) {
-        console.log('Waiting for server address to load before fetching model config');
+        logger.debug('Waiting for server address to load before fetching model config');
         return;
       }
 
       try {
-        const data = await invoke('api_get_model_config') as any;
+        const data = await invoke('api_get_model_config') as ModelConfig;
         if (data && data.provider !== null) {
           // Fetch API key if not included and provider requires it
           if (data.provider !== 'ollama' && !data.apiKey) {
@@ -141,12 +142,12 @@ const Sidebar: React.FC = () => {
     const fetchTranscriptSettings = async () => {
       // Only make API call if serverAddress is loaded
       if (!serverAddress) {
-        console.log('Waiting for server address to load before fetching transcript settings');
+        logger.debug('Waiting for server address to load before fetching transcript settings');
         return;
       }
 
       try {
-        const data = await invoke('api_get_transcript_config') as any;
+        const data = await invoke('api_get_transcript_config') as TranscriptModelProps;
         if (data && data.provider !== null) {
           setTranscriptModelConfig(data);
         }
@@ -162,7 +163,7 @@ const Sidebar: React.FC = () => {
     const setupListener = async () => {
       const { listen } = await import('@tauri-apps/api/event');
       const unlisten = await listen<ModelConfig>('model-config-updated', (event) => {
-        console.log('Sidebar received model-config-updated event:', event.payload);
+        logger.debug('Sidebar received model-config-updated event:', event.payload);
         setModelConfig(event.payload);
       });
 
@@ -191,7 +192,7 @@ const Sidebar: React.FC = () => {
       });
 
       setModelConfig(config);
-      console.log('Model config saved successfully');
+      logger.debug('Model config saved successfully');
       setSettingsSaveSuccess(true);
 
       // Emit event to sync other components
@@ -214,7 +215,7 @@ const Sidebar: React.FC = () => {
         model: configToSave.model,
         apiKey: configToSave.apiKey ?? null
       };
-      console.log('Saving transcript config with payload:', payload);
+      logger.debug('Saving transcript config with payload:', payload);
 
       await invoke('api_save_transcript_config', {
         provider: payload.provider,
@@ -316,7 +317,7 @@ const Sidebar: React.FC = () => {
 
 
   const handleDelete = async (itemId: string) => {
-    console.log('Deleting item:', itemId);
+    logger.debug('Deleting item:', itemId);
     const payload = {
       meetingId: itemId
     };
@@ -326,7 +327,7 @@ const Sidebar: React.FC = () => {
       await invoke('api_delete_meeting', {
         meetingId: itemId,
       });
-      console.log('Meeting deleted successfully');
+      logger.debug('Meeting deleted successfully');
       const updatedMeetings = meetings.filter((m: CurrentMeeting) => m.id !== itemId);
       setMeetings(updatedMeetings);
 
@@ -431,13 +432,14 @@ const Sidebar: React.FC = () => {
 
   // Expose setShowModelSettings to window for Rust tray to call
   useEffect(() => {
-    (window as any).openSettings = () => {
+    const w = window as unknown as { openSettings?: () => void };
+    w.openSettings = () => {
       setShowModelSettings(true);
     };
 
     // Cleanup on unmount
     return () => {
-      delete (window as any).openSettings;
+      delete w.openSettings;
     };
   }, []);
 
@@ -673,6 +675,7 @@ const Sidebar: React.FC = () => {
                       <InputGroupAddon align={'inline-end'}>
                         <InputGroupButton
                           onClick={() => handleSearchChange('')}
+                          aria-label="Clear search"
                         >
                           <X />
                         </InputGroupButton>

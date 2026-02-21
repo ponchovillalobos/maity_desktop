@@ -24,6 +24,7 @@ import { RecordingPostProcessingProvider } from '@/contexts/RecordingPostProcess
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { MeetingDetectionDialog } from '@/components/MeetingDetectionDialog'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
+import { logger } from '@/lib/logger'
 
 const sourceSans3 = Source_Sans_3({
   subsets: ['latin'],
@@ -49,10 +50,10 @@ export default function RootLayout({
         setOnboardingCompleted(isComplete)
 
         if (!isComplete) {
-          console.log('[Layout] Onboarding not completed, showing onboarding flow')
+          logger.debug('[Layout] Onboarding not completed, showing onboarding flow')
           setShowOnboarding(true)
         } else {
-          console.log('[Layout] Onboarding completed, showing main app')
+          logger.debug('[Layout] Onboarding completed, showing main app')
         }
       })
       .catch((error) => {
@@ -74,7 +75,7 @@ export default function RootLayout({
   useEffect(() => {
     // Listen for tray recording toggle request
     const unlisten = listen('request-recording-toggle', () => {
-      console.log('[Layout] Received request-recording-toggle from tray');
+      logger.debug('[Layout] Received request-recording-toggle from tray');
 
       if (showOnboarding) {
         toast.error("Por favor completa la configuración primero", {
@@ -82,7 +83,7 @@ export default function RootLayout({
         });
       } else {
         // If in main app, forward to useRecordingStart via window event
-        console.log('[Layout] Forwarding to start-recording-from-sidebar');
+        logger.debug('[Layout] Forwarding to start-recording-from-sidebar');
         window.dispatchEvent(new CustomEvent('start-recording-from-sidebar'));
       }
     });
@@ -93,7 +94,7 @@ export default function RootLayout({
   }, [showOnboarding]);
 
   const handleOnboardingComplete = () => {
-    console.log('[Layout] Onboarding completed, reloading app')
+    logger.debug('[Layout] Onboarding completed, reloading app')
     setShowOnboarding(false)
     setOnboardingCompleted(true)
     // Optionally reload the window to ensure all state is fresh
@@ -101,8 +102,12 @@ export default function RootLayout({
   }
 
   return (
-    <html lang="en" className="dark">
+    <html lang="es" className="dark">
       <body className={`${sourceSans3.variable} font-sans antialiased`}>
+        <a href="#main-content"
+           className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:shadow-lg focus:text-black">
+          Skip to main content
+        </a>
         <ErrorBoundary>
         <AnalyticsProvider>
           <RecordingStateProvider>

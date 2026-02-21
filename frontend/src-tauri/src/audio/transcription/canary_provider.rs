@@ -1,38 +1,35 @@
-// audio/transcription/whisper_provider.rs
+// audio/transcription/canary_provider.rs
 //
-// Whisper transcription provider implementation.
+// Canary transcription provider implementation.
 
 use super::provider::{TranscriptionError, TranscriptionProvider, TranscriptResult};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-/// Whisper transcription provider (wraps WhisperEngine)
-pub struct WhisperProvider {
-    engine: Arc<crate::whisper_engine::WhisperEngine>,
+/// Canary transcription provider (wraps CanaryEngine)
+pub struct CanaryProvider {
+    engine: Arc<crate::canary_engine::CanaryEngine>,
 }
 
-impl WhisperProvider {
-    pub fn new(engine: Arc<crate::whisper_engine::WhisperEngine>) -> Self {
+impl CanaryProvider {
+    pub fn new(engine: Arc<crate::canary_engine::CanaryEngine>) -> Self {
         Self { engine }
     }
 }
 
 #[async_trait]
-impl TranscriptionProvider for WhisperProvider {
+impl TranscriptionProvider for CanaryProvider {
     async fn transcribe(
         &self,
         audio: Vec<f32>,
         language: Option<String>,
     ) -> std::result::Result<TranscriptResult, TranscriptionError> {
-        match self
-            .engine
-            .transcribe_audio_with_confidence(audio, language)
-            .await
-        {
-            Ok((text, confidence, is_partial)) => Ok(TranscriptResult {
+        // Canary supports language hints: es, en, de, fr
+        match self.engine.transcribe_audio_with_lang(audio, language).await {
+            Ok(text) => Ok(TranscriptResult {
                 text: text.trim().to_string(),
-                confidence: Some(confidence),
-                is_partial,
+                confidence: None,
+                is_partial: false,
             }),
             Err(e) => Err(TranscriptionError::EngineFailed(e.to_string())),
         }
@@ -47,6 +44,6 @@ impl TranscriptionProvider for WhisperProvider {
     }
 
     fn provider_name(&self) -> &'static str {
-        "Whisper"
+        "Canary"
     }
 }

@@ -37,6 +37,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env
+backend/temp.env
 
 # vercel
 .vercel
@@ -81,3 +82,6 @@ Cargo.lock
 
 # Windows artifact
 nul
+
+# Claude Code local settings
+.claude/settings.local.json

@@ -21,7 +21,7 @@ export function CustomDialog({ triggerComponent, dialogContent, dialogTitle = "D
             <DialogTrigger asChild>
                 {clonedTrigger}
             </DialogTrigger>
-            <DialogContent aria-describedby={undefined}>
+            <DialogContent>
                 <VisuallyHidden>
                     <DialogTitle>{dialogTitle}</DialogTitle>
                 </VisuallyHidden>

@@ -1,7 +1,5 @@
 #[cfg(target_os = "windows")]
 use std::ptr;
-#[cfg(target_os = "windows")]
-use env_logger;
 #[cfg(target_os = "macos")]
 use std::process::Command;
 
@@ -16,9 +14,53 @@ extern "system" {
 }
 
 #[cfg(target_os = "windows")]
+extern "system" {
+    fn CreateFileW(
+        lpFileName: *const u16,
+        dwDesiredAccess: u32,
+        dwShareMode: u32,
+        lpSecurityAttributes: *const std::ffi::c_void,
+        dwCreationDisposition: u32,
+        dwFlagsAndAttributes: u32,
+        hTemplateFile: *const std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
+    fn SetStdHandle(nStdHandle: u32, hHandle: *mut std::ffi::c_void) -> i32;
+}
+
+#[cfg(target_os = "windows")]
 const SW_HIDE: i32 = 0;
 #[cfg(target_os = "windows")]
 const SW_SHOW: i32 = 5;
+
+/// Redirect stdout/stderr to the newly allocated console.
+/// Updates the process standard handles so future I/O operations target the console.
+#[cfg(target_os = "windows")]
+unsafe fn redirect_std_to_console() {
+    const GENERIC_READ: u32 = 0x80000000;
+    const GENERIC_WRITE: u32 = 0x40000000;
+    const FILE_SHARE_READ: u32 = 0x00000001;
+    const FILE_SHARE_WRITE: u32 = 0x00000002;
+    const OPEN_EXISTING: u32 = 3;
+    const INVALID_HANDLE_VALUE: *mut std::ffi::c_void = -1isize as *mut std::ffi::c_void;
+    const STD_OUTPUT_HANDLE: u32 = (-11i32) as u32;
+    const STD_ERROR_HANDLE: u32 = (-12i32) as u32;
+
+    let conout: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
+    let handle = CreateFileW(
+        conout.as_ptr(),
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        ptr::null(),
+        OPEN_EXISTING,
+        0,
+        ptr::null(),
+    );
+
+    if handle != INVALID_HANDLE_VALUE && handle != ptr::null_mut() {
+        SetStdHandle(STD_OUTPUT_HANDLE, handle);
+        SetStdHandle(STD_ERROR_HANDLE, handle);
+    }
+}
 
 #[tauri::command]
 pub fn show_console() -> Result<String, String> {
@@ -30,9 +72,10 @@ pub fn show_console() -> Result<String, String> {
             if AllocConsole() == 0 {
                 return Err("Failed to allocate console".to_string());
             }
-            // Reinitialize stdout, stdin, stderr for the new console
-            std::env::set_var("RUST_LOG", "info");
-            env_logger::init();
+            // Redirect stdout/stderr to the new console via Win32 API
+            // Note: For println! to work, AllocConsole should ideally be called
+            // before any I/O initialization (see main.rs auto-allocation).
+            redirect_std_to_console();
         } else {
             // Show existing console window
             ShowWindow(console_window, SW_SHOW);

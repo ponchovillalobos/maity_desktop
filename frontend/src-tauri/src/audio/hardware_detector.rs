@@ -36,6 +36,8 @@ pub struct AdaptiveWhisperConfig {
     pub use_gpu: bool,
     pub max_threads: Option<usize>,
     pub chunk_size_preference: ChunkSizePreference,
+    pub audio_ctx: u32,       // Encoder context size (768=15s, 1500=30s default)
+    pub single_segment: bool, // Force single segment output for streaming
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,16 +106,22 @@ impl HardwareProfile {
         (false, GpuType::None)
     }
 
-    /// Detect available system memory in GB
+    /// Detect available system memory in GB using sysinfo
     fn detect_memory_gb() -> u8 {
-        // Simple memory detection - could be enhanced with system-specific calls
-        match std::env::var("MEMORY_GB") {
-            Ok(mem_str) => mem_str.parse().unwrap_or(8),
-            Err(_) => {
-                // Default estimates based on common configurations
-                8 // Conservative default
+        // Allow override via env var for testing (e.g., simulating low-RAM hardware)
+        if let Ok(mem_str) = std::env::var("MEMORY_GB") {
+            if let Ok(val) = mem_str.parse::<u8>() {
+                info!("Using MEMORY_GB override: {}GB", val);
+                return val;
             }
         }
+
+        // Real detection via sysinfo
+        let mut sys = sysinfo::System::new();
+        sys.refresh_memory();
+        let total_bytes = sys.total_memory();
+        let total_gb = (total_bytes / 1_073_741_824) as u8; // bytes → GB
+        if total_gb == 0 { 8 } else { total_gb } // fallback if detection fails
     }
 
     /// Calculate performance tier based on hardware
@@ -171,52 +179,47 @@ impl HardwareProfile {
     }
 
     /// Generate adaptive Whisper configuration based on hardware
+    /// OPTIMIZED FOR REAL-TIME: All tiers use Greedy decoding (beam_size=1),
+    /// temperature=0.0, audio_ctx=768 (15s), and single_segment=true.
+    /// Thread count and GPU usage vary by hardware capability.
     pub fn get_whisper_config(&self) -> AdaptiveWhisperConfig {
-        // Windows-specific override: Always use beam size 2 for stability
-        #[cfg(target_os = "windows")]
-        {
-            return AdaptiveWhisperConfig {
-                beam_size: 2,
-                temperature: 0.2,
+        match self.performance_tier {
+            PerformanceTier::Ultra => AdaptiveWhisperConfig {
+                beam_size: 1,           // Greedy = fastest decoding
+                temperature: 0.0,       // Deterministic = no sampling overhead
                 use_gpu: self.has_gpu_acceleration,
                 max_threads: Some(self.cpu_cores.min(8) as usize),
+                chunk_size_preference: ChunkSizePreference::Quality,
+                audio_ctx: 512,         // ~10s context = faster encoder for short chunks
+                single_segment: true,   // Single segment for streaming chunks
+            },
+            PerformanceTier::High => AdaptiveWhisperConfig {
+                beam_size: 1,
+                temperature: 0.0,
+                use_gpu: self.has_gpu_acceleration,
+                max_threads: Some(self.cpu_cores.min(8) as usize), // Use more cores
                 chunk_size_preference: ChunkSizePreference::Balanced,
-            };
-        }
-
-        // Platform-adaptive configuration for non-Windows systems
-        #[cfg(not(target_os = "windows"))]
-        {
-            match self.performance_tier {
-                PerformanceTier::Ultra => AdaptiveWhisperConfig {
-                    beam_size: 5,  // Maximum quality
-                    temperature: 0.1,
-                    use_gpu: self.has_gpu_acceleration,
-                    max_threads: Some(self.cpu_cores.min(8) as usize),
-                    chunk_size_preference: ChunkSizePreference::Quality,
-                },
-                PerformanceTier::High => AdaptiveWhisperConfig {
-                    beam_size: 3,  // High quality
-                    temperature: 0.2,
-                    use_gpu: self.has_gpu_acceleration,
-                    max_threads: Some(self.cpu_cores.min(6) as usize),
-                    chunk_size_preference: ChunkSizePreference::Balanced,
-                },
-                PerformanceTier::Medium => AdaptiveWhisperConfig {
-                    beam_size: 2,  // Balanced
-                    temperature: 0.3,
-                    use_gpu: self.has_gpu_acceleration,
-                    max_threads: Some(self.cpu_cores.min(4) as usize),
-                    chunk_size_preference: ChunkSizePreference::Balanced,
-                },
-                PerformanceTier::Low => AdaptiveWhisperConfig {
-                    beam_size: 1,  // Fast processing
-                    temperature: 0.4,
-                    use_gpu: false, // Force CPU to avoid GPU overhead on weak hardware
-                    max_threads: Some(2),
-                    chunk_size_preference: ChunkSizePreference::Fast,
-                },
-            }
+                audio_ctx: 512,
+                single_segment: true,
+            },
+            PerformanceTier::Medium => AdaptiveWhisperConfig {
+                beam_size: 1,
+                temperature: 0.0,
+                use_gpu: self.has_gpu_acceleration,
+                max_threads: Some(self.cpu_cores.min(6) as usize), // Use more cores (was 4)
+                chunk_size_preference: ChunkSizePreference::Fast,
+                audio_ctx: 512,
+                single_segment: true,
+            },
+            PerformanceTier::Low => AdaptiveWhisperConfig {
+                beam_size: 1,
+                temperature: 0.0,
+                use_gpu: false, // Force CPU to avoid GPU overhead on weak hardware
+                max_threads: Some(self.cpu_cores.max(2).min(6) as usize), // Use available cores (min 2, max 6)
+                chunk_size_preference: ChunkSizePreference::Fast,
+                audio_ctx: 512,
+                single_segment: true,
+            },
         }
     }
 
@@ -260,7 +263,7 @@ mod tests {
         let profile = HardwareProfile::detect();
         let config = profile.get_whisper_config();
 
-        assert!(config.beam_size >= 1 && config.beam_size <= 5);
+        assert_eq!(config.beam_size, 1); // Always greedy for real-time
         assert!(config.temperature >= 0.0 && config.temperature <= 1.0);
 
         // Performance optimization: remove println! from tests

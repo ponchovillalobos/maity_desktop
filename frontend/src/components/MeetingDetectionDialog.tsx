@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Video, Mic, X, Clock, Settings } from 'lucide-react'
 import { toast } from 'sonner'
+import { logger } from '@/lib/logger'
 
 interface DetectedMeeting {
   app: string | { Unknown: string }
@@ -74,7 +75,7 @@ export function MeetingDetectionDialog() {
     const setupListener = async () => {
       unlisten = await listen<MeetingDetectedEvent>('meeting-detected', (event) => {
         const { meeting, action } = event.payload
-        console.log('[MeetingDetection] Detected:', meeting, 'Action:', action)
+        logger.debug('[MeetingDetection] Detected:', meeting, 'Action:', action)
 
         if (action === 'ask') {
           // Show dialog for user to decide

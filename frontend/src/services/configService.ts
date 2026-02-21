@@ -15,6 +15,7 @@ export interface ModelConfig {
   apiKey?: string | null;
   ollamaEndpoint?: string | null;
   // Custom OpenAI fields (only populated when provider is 'custom-openai')
+  customOpenAIDisplayName?: string | null;
   customOpenAIEndpoint?: string | null;
   customOpenAIModel?: string | null;
   customOpenAIApiKey?: string | null;
@@ -30,6 +31,7 @@ export interface CustomOpenAIConfig {
   maxTokens: number | null;
   temperature: number | null;
   topP: number | null;
+  displayName?: string | null;
 }
 
 export interface RecordingPreferences {

@@ -153,7 +153,7 @@ export function MeetingDetectorSettings() {
 
   const handleCheckNow = async () => {
     try {
-      const meetings = await invoke<any[]>('check_for_meetings_now')
+      const meetings = await invoke<{ app_name: string; window_title: string }[]>('check_for_meetings_now')
       if (meetings.length === 0) {
         toast.info('No se detectaron reuniones activas')
       } else {

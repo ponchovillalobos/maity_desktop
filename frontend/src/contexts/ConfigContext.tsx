@@ -5,6 +5,9 @@ import { TranscriptModelProps } from '@/components/TranscriptSettings';
 import { SelectedDevices } from '@/components/DeviceSelection';
 import { configService, ModelConfig } from '@/services/configService';
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from '@/lib/logger';
+
+const DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434";
 
 export interface OllamaModel {
   name: string;
@@ -89,7 +92,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     whisperModel: 'large-v3'
   });
 
-  // Transcript model configuration state
+  // Transcript model configuration state - default to Parakeet for local-first transcription
   const [transcriptModelConfig, setTranscriptModelConfig] = useState<TranscriptModelProps>({
     provider: 'parakeet',
     model: 'parakeet-tdt-0.6b-v3-int8',
@@ -107,7 +110,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   });
 
   // Language preference state
-  const [selectedLanguage, setSelectedLanguage] = useState('auto-translate');
+  const [selectedLanguage, setSelectedLanguage] = useState('es');
 
   // UI preferences state
   const [showConfidenceIndicator, setShowConfidenceIndicator] = useState<boolean>(() => {
@@ -151,7 +154,8 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const response = await fetch('http://localhost:11434/api/tags', {
+        const ollamaBase = modelConfig.ollamaEndpoint || DEFAULT_OLLAMA_ENDPOINT;
+        const response = await fetch(`${ollamaBase}/api/tags`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -163,7 +167,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         }
 
         const data = await response.json();
-        const modelList = data.models.map((model: any) => ({
+        const modelList = data.models.map((model: { name: string; model: string; size: number; modified_at: string }) => ({
           name: model.name,
           id: model.model,
           size: formatSize(model.size),
@@ -177,7 +181,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     };
 
     loadModels();
-  }, []);
+  }, [modelConfig.ollamaEndpoint]);
 
   // Auto-select first Ollama model when models load
   useEffect(() => {
@@ -195,7 +199,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       try {
         const config = await configService.getTranscriptConfig();
         if (config) {
-          console.log('[ConfigContext] Loaded saved transcript config:', config);
+          logger.debug('[ConfigContext] Loaded saved transcript config:', config);
           setTranscriptModelConfig({
             provider: config.provider || 'parakeet',
             model: config.model || 'parakeet-tdt-0.6b-v3-int8',
@@ -221,7 +225,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
               const customConfig = await configService.getCustomOpenAIConfig();
               if (customConfig) {
                 // Merge custom config fields into modelConfig
-                console.log('[ConfigContext] Loading custom OpenAI config:', {
+                logger.debug('[ConfigContext] Loading custom OpenAI config:', {
                   endpoint: customConfig.endpoint,
                   model: customConfig.model,
                 });
@@ -264,7 +268,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     const setupListener = async () => {
       const { listen } = await import('@tauri-apps/api/event');
       const unlisten = await listen<ModelConfig>('model-config-updated', (event) => {
-        console.log('[ConfigContext] Received model-config-updated event:', event.payload);
+        logger.debug('[ConfigContext] Received model-config-updated event:', event.payload);
         setModelConfig(event.payload);
       });
       return unlisten;
@@ -288,10 +292,10 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
             micDevice: prefs.preferred_mic_device,
             systemDevice: prefs.preferred_system_device
           });
-          console.log('Loaded device preferences:', prefs);
+          logger.debug('Loaded device preferences:', prefs);
         }
       } catch (error) {
-        console.log('No device preferences found or failed to load:', error);
+        logger.debug('No device preferences found or failed to load:', error);
       }
     };
     loadDevicePreferences();
@@ -304,12 +308,11 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         const language = await configService.getLanguagePreference();
         if (language) {
           setSelectedLanguage(language);
-          console.log('Loaded language preference:', language);
+          logger.debug('Loaded language preference:', language);
         }
       } catch (error) {
-        console.log('No language preference found or failed to load, using default (auto-translate):', error);
-        // Default to 'auto-translate' (Auto Detect with English translation) if no preference is saved
-        setSelectedLanguage('auto-translate');
+        logger.debug('No language preference found or failed to load, using default (es):', error);
+        setSelectedLanguage('es');
       }
     };
     loadLanguagePreference();
@@ -372,7 +375,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       // Load storage locations
       const [dbDir, modelsDir, recordingsDir] = await Promise.all([
         invoke<string>('get_database_directory'),
-        invoke<string>('whisper_get_models_directory'),
+        invoke<string>('parakeet_get_models_directory'),
         invoke<string>('get_default_recordings_folder_path')
       ]);
 

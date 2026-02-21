@@ -66,15 +66,6 @@ impl MonitoredDevice {
         }
     }
 
-    /// Get appropriate reconnect check interval
-    #[allow(dead_code)]
-    fn reconnect_interval(&self) -> Duration {
-        if self.is_bluetooth {
-            Duration::from_secs(5) // Check every 5s for Bluetooth
-        } else {
-            Duration::from_secs(3) // Check every 3s for wired devices
-        }
-    }
 }
 
 /// Audio device monitor that detects disconnects and reconnects
@@ -119,7 +110,7 @@ impl AudioDeviceMonitor {
                 DeviceMonitorType::Microphone,
             ));
             info!("🔍 Monitoring microphone: '{}' (Bluetooth: {})",
-                  mic.name, monitored_devices.last().unwrap().is_bluetooth);
+                  mic.name, monitored_devices.last().map(|d| d.is_bluetooth).unwrap_or(false));
         }
 
         if let Some(sys) = system_audio {
@@ -128,7 +119,7 @@ impl AudioDeviceMonitor {
                 DeviceMonitorType::SystemAudio,
             ));
             info!("🔍 Monitoring system audio: '{}' (Bluetooth: {})",
-                  sys.name, monitored_devices.last().unwrap().is_bluetooth);
+                  sys.name, monitored_devices.last().map(|d| d.is_bluetooth).unwrap_or(false));
         }
 
         if monitored_devices.is_empty() {

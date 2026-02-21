@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { ModelConfig, ModelSettingsModal } from '@/components/ModelSettingsModal';
+import type { CustomOpenAIConfig } from '@/services/configService';
 import { Switch } from './ui/switch';
 import { useConfig } from '@/contexts/ConfigContext';
+import { logger } from '@/lib/logger';
 
 interface SummaryModelSettingsProps {
   refetchTrigger?: number; // Change this to trigger refetch
@@ -25,7 +27,7 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
   // Reusable fetch function
   const fetchModelConfig = useCallback(async () => {
     try {
-      const data = await invoke('api_get_model_config') as any;
+      const data = await invoke('api_get_model_config') as ModelConfig;
       if (data && data.provider !== null) {
         // Fetch API key if not included and provider requires it
         if (data.provider !== 'ollama' && data.provider !== 'builtin-ai' && !data.apiKey) {
@@ -41,7 +43,7 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
         // Fetch Custom OpenAI config if that's the active provider
         if (data.provider === 'custom-openai') {
           try {
-            const customConfig = (await invoke('api_get_custom_openai_config')) as any;
+            const customConfig = (await invoke('api_get_custom_openai_config')) as CustomOpenAIConfig | null;
             if (customConfig) {
               data.customOpenAIDisplayName = customConfig.displayName || null;
               data.customOpenAIEndpoint = customConfig.endpoint || null;
@@ -82,7 +84,7 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
     const setupListener = async () => {
       const { listen } = await import('@tauri-apps/api/event');
       const unlisten = await listen<ModelConfig>('model-config-updated', (event) => {
-        console.log('SummaryModelSettings received model-config-updated event:', event.payload);
+        logger.debug('SummaryModelSettings received model-config-updated event:', event.payload);
         setModelConfig(event.payload);
       });
 

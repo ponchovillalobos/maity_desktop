@@ -1,6 +1,6 @@
 # Deepgram Integration Addendum
 
-This document describes how to use Deepgram for cloud-based transcription in Meetily.
+This document describes how to use Deepgram for cloud-based transcription in Maity.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 ### Method 1: Through the App Settings
 
-1. Open Meetily
+1. Open Maity
 2. Go to **Settings** > **Transcription**
 3. Select **Deepgram** as the transcription provider
 4. Enter your Deepgram API key
@@ -132,7 +132,7 @@ unset DEEPGRAM_API_KEY
 
 ### Fallback to Local Transcription
 
-If Deepgram fails or is not configured, Meetily will automatically fall back to Parakeet (local transcription). You'll see a log message:
+If Deepgram fails or is not configured, Maity will automatically fall back to Parakeet (local transcription). You'll see a log message:
 
 ```
 DEEPGRAM_API_KEY not configured, falling back to Parakeet

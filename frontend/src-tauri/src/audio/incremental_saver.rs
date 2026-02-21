@@ -188,10 +188,10 @@ impl IncrementalAudioSaver {
         command.args(&[
             "-f", "concat",          // Use concat demuxer
             "-safe", "0",            // Allow absolute paths
-            "-i", list_file.to_str().unwrap(),
+            "-i", list_file.to_str().ok_or_else(|| anyhow!("Invalid UTF-8 in concat list path"))?,
             "-c", "copy",            // Copy codec - no re-encoding!
             "-y",                    // Overwrite output file
-            output.to_str().unwrap()
+            output.to_str().ok_or_else(|| anyhow!("Invalid UTF-8 in output path"))?
         ]);
 
         // Hide console window on Windows to prevent CMD popup during finalization
@@ -322,7 +322,7 @@ pub async fn recover_audio_from_checkpoints(
     command.args(&[
         "-f", "concat",
         "-safe", "0",
-        "-i", concat_file_path.to_str().unwrap(),
+        "-i", concat_file_path.to_str().ok_or_else(|| "Invalid UTF-8 in concat file path".to_string())?,
         "-c", "copy",
         "-y", // Overwrite if exists
         &output_path_str
@@ -445,6 +445,8 @@ mod tests {
             let chunk = AudioChunk {
                 data: vec![0.5f32; 24000],  // 0.5s at 48kHz
                 sample_rate: 48000,
+                timestamp: 0.0,
+                chunk_id: 0,
                 device_type: DeviceType::Microphone,
             };
             saver.add_chunk(chunk).unwrap();

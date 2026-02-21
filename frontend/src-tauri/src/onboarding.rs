@@ -170,9 +170,8 @@ pub async fn complete_onboarding<R: Runtime>(
     state: tauri::State<'_, AppState>,
     _model: String,
 ) -> Result<(), String> {
-    // Cloud-only mode: Use OpenAI for summaries and Deepgram for transcription
-    // No local models required
-    info!("Completing onboarding with cloud providers (OpenAI + Deepgram)");
+    // Local-first mode: Use local Whisper for transcription
+    info!("Completing onboarding with local Whisper transcription");
 
     // Step 1: Save model configuration to SQLite database FIRST
     let pool = state.db_manager.pool();
@@ -182,7 +181,7 @@ pub async fn complete_onboarding<R: Runtime>(
         pool,
         "openai",
         "gpt-4o-2024-11-20",
-        "deepgram",  // Whisper model field repurposed - not used with cloud
+        "small",  // Whisper model for summary model config (not actively used)
         None,
     ).await {
         error!("Failed to save OpenAI model config: {}", e);
@@ -190,16 +189,16 @@ pub async fn complete_onboarding<R: Runtime>(
     }
     info!("Saved summary model config: provider=openai, model=gpt-4o-2024-11-20");
 
-    // Save transcription config - use Deepgram (cloud API)
+    // Save transcription config - use Parakeet (privacy-first, optimized for CPU)
     if let Err(e) = SettingsRepository::save_transcript_config(
         pool,
-        "deepgram",
-        "nova-2",
+        "parakeet",
+        "parakeet-tdt-0.6b-v3-int8",
     ).await {
         error!("Failed to save transcription model config: {}", e);
         return Err(format!("Failed to save transcription model config: {}", e));
     }
-    info!("Saved transcription model config: provider=deepgram, model=nova-2");
+    info!("Saved transcription model config: provider=parakeet, model=parakeet-tdt-0.6b-v3-int8");
 
     // Step 2: Only NOW mark onboarding as complete (after DB operations succeed)
     let mut status = load_onboarding_status(&app)
@@ -208,14 +207,14 @@ pub async fn complete_onboarding<R: Runtime>(
 
     status.completed = true;
     status.current_step = 4; // Max step (4 on macOS with permissions, 3 on other platforms)
-    // Cloud mode - mark as "cloud" to indicate no local downloads needed
-    status.model_status.parakeet = "cloud".to_string();
+    // Local mode - mark model status
+    status.model_status.parakeet = "not_downloaded".to_string();
     status.model_status.summary = "cloud".to_string();
 
     save_onboarding_status(&app, &status)
         .await
         .map_err(|e| format!("Failed to save completed onboarding status: {}", e))?;
 
-    info!("Onboarding completed successfully with cloud providers");
+    info!("Onboarding completed successfully with Parakeet transcription");
     Ok(())
 }

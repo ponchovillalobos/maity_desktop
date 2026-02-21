@@ -6,6 +6,7 @@ import { ConfidenceIndicator } from './ConfidenceIndicator';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { RecordingStatusBar } from './RecordingStatusBar';
 import { motion, AnimatePresence } from 'framer-motion';
+import { logger } from '@/lib/logger';
 
 // Speaker indicator component to show who is speaking
 const SpeakerIndicator = memo(function SpeakerIndicator({
@@ -127,11 +128,11 @@ function cleanStopWords(text: string): string {
   return cleanedText;
 }
 
-export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isRecording = false, isPaused = false, isProcessing = false, isStopping = false, enableStreaming = false }) => {
+export const TranscriptView: React.FC<TranscriptViewProps> = memo(function TranscriptView({ transcripts, isRecording = false, isPaused = false, isProcessing = false, isStopping = false, enableStreaming = false }) {
   const [speechDetected, setSpeechDetected] = useState(false);
 
   // Debug: Log the props to understand what's happening
-  console.log('TranscriptView render:', {
+  logger.debug('TranscriptView render:', {
     isRecording,
     isPaused,
     isProcessing,
@@ -273,7 +274,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
   }, []);
 
   return (
-    <div className="px-4 py-2">
+    <div className="px-4 py-2" role="list" aria-label="Transcript entries">
       {/* Recording Status Bar - Sticky at top, always visible when recording */}
       <AnimatePresence>
         {isRecording && (
@@ -303,6 +304,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.15 }}
             className="mb-3"
+            role="listitem"
           >
             <div className="flex items-start gap-2">
               <Tooltip>
@@ -404,4 +406,4 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
       )}
     </div>
   );
-};
+});

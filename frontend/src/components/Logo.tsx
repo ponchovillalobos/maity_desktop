@@ -10,7 +10,7 @@ interface LogoProps {
 
 const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(({ isCollapsed }, ref) => {
   return (
-    <Dialog aria-describedby={undefined}>
+    <Dialog>
       {isCollapsed ? (
         <DialogTrigger asChild>
           <button ref={ref} className="flex items-center justify-start mb-2 cursor-pointer bg-transparent border-none p-0 hover:opacity-80 transition-opacity">

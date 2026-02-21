@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useRecordingStop } from '@/hooks/useRecordingStop';
+import { logger } from '@/lib/logger';
 
 /**
  * RecordingPostProcessingProvider
@@ -18,14 +19,12 @@ import { useRecordingStop } from '@/hooks/useRecordingStop';
  * regardless of which page the user is currently on.
  */
 export function RecordingPostProcessingProvider({ children }: { children: React.ReactNode }) {
-  // No-op functions since the global RecordingStateContext already handles state updates
-  // These are only needed for the hook's local component state management
-  const setIsRecording = () => { };
+  // No-op function since the global RecordingStateContext already handles state updates
   const setIsRecordingDisabled = () => { };
 
   const {
     handleRecordingStop,
-  } = useRecordingStop(setIsRecording, setIsRecordingDisabled);
+  } = useRecordingStop(setIsRecordingDisabled);
 
   useEffect(() => {
     let unlistenFn: (() => void) | undefined;
@@ -34,14 +33,14 @@ export function RecordingPostProcessingProvider({ children }: { children: React.
       try {
         // Listen for recording-stop-complete event from Rust
         unlistenFn = await listen<boolean>('recording-stop-complete', (event) => {
-          console.log('[RecordingPostProcessing] Received recording-stop-complete event:', event.payload);
+          logger.debug('[RecordingPostProcessing] Received recording-stop-complete event:', event.payload);
 
           // Call the post-processing handler
           // event.payload is the callApi boolean (true for normal stops)
           handleRecordingStop(event.payload);
         });
 
-        console.log('[RecordingPostProcessing] Event listener set up successfully');
+        logger.debug('[RecordingPostProcessing] Event listener set up successfully');
       } catch (error) {
         console.error('[RecordingPostProcessing] Failed to set up event listener:', error);
       }
@@ -51,7 +50,7 @@ export function RecordingPostProcessingProvider({ children }: { children: React.
 
     return () => {
       if (unlistenFn) {
-        console.log('[RecordingPostProcessing] Cleaning up event listener');
+        logger.debug('[RecordingPostProcessing] Cleaning up event listener');
         unlistenFn();
       }
     };

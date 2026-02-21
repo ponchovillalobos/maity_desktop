@@ -7,6 +7,7 @@ interface AudioLevelMeterProps {
   deviceName: string;
   className?: string;
   size?: 'small' | 'medium' | 'large';
+  variant?: 'mic' | 'system';  // Color identity: mic=blue, system=green
 }
 
 export function AudioLevelMeter({
@@ -15,7 +16,8 @@ export function AudioLevelMeter({
   isActive,
   deviceName,
   className = '',
-  size = 'medium'
+  size = 'medium',
+  variant
 }: AudioLevelMeterProps) {
   // Normalize levels to 0-1 range and apply log scaling for better visual representation
   const normalizedRms = Math.max(0, Math.min(1, rmsLevel));
@@ -29,11 +31,11 @@ export function AudioLevelMeter({
   const rmsPercent = Math.round(logRms * 100);
   const peakPercent = Math.round(logPeak * 100);
 
-  // Color coding based on level
+  // Color based on device identity (mic=blue, system=green), red for clipping
   const getLevelColor = (level: number) => {
-    if (level < 0.3) return 'bg-[#1bea9a]';
-    if (level < 0.7) return 'bg-[#485df4]';
-    return 'bg-[#ff0050]';
+    if (level >= 0.7) return 'bg-[#ff0050]';
+    if (variant === 'system') return 'bg-[#1bea9a]';
+    return 'bg-[#485df4]';
   };
 
   const rmsColor = getLevelColor(logRms);
@@ -64,7 +66,9 @@ export function AudioLevelMeter({
     <div className={`flex items-center space-x-2 ${className}`}>
       {/* Device activity indicator */}
       <div className={`w-2 h-2 rounded-full ${
-        isActive ? 'bg-[#2beea6] animate-pulse' : 'bg-[#d0d0d3] dark:bg-gray-600'
+        isActive
+          ? `${variant === 'system' ? 'bg-[#2beea6]' : 'bg-[#485df4]'} animate-pulse`
+          : 'bg-[#d0d0d3] dark:bg-gray-600'
       }`} title={`${deviceName} - ${isActive ? 'Active' : 'Inactive'}`} />
 
       {/* Level meter container */}
@@ -110,6 +114,7 @@ interface CompactAudioLevelMeterProps {
   peakLevel: number;
   isActive: boolean;
   className?: string;
+  variant?: 'mic' | 'system';
 }
 
 // Compact version for inline display in dropdowns
@@ -117,23 +122,26 @@ export function CompactAudioLevelMeter({
   rmsLevel,
   peakLevel,
   isActive,
-  className = ''
+  className = '',
+  variant
 }: CompactAudioLevelMeterProps) {
   const normalizedRms = Math.max(0, Math.min(1, rmsLevel));
   const logRms = normalizedRms > 0 ? Math.log10(normalizedRms * 9 + 1) : 0;
   const rmsPercent = Math.round(logRms * 100);
 
   const getLevelColor = (level: number) => {
-    if (level < 0.3) return 'bg-[#2beea6]';
-    if (level < 0.7) return 'bg-[#6b7ef6]';
-    return 'bg-[#ff4080]';
+    if (level >= 0.7) return 'bg-[#ff4080]';
+    if (variant === 'system') return 'bg-[#2beea6]';
+    return 'bg-[#6b7ef6]';
   };
 
   return (
     <div className={`flex items-center space-x-1 ${className}`}>
       {/* Activity dot */}
       <div className={`w-1.5 h-1.5 rounded-full ${
-        isActive ? 'bg-[#2beea6]' : 'bg-[#d0d0d3] dark:bg-gray-600'
+        isActive
+          ? `${variant === 'system' ? 'bg-[#2beea6]' : 'bg-[#6b7ef6]'}`
+          : 'bg-[#d0d0d3] dark:bg-gray-600'
       }`} />
 
       {/* Mini meter */}

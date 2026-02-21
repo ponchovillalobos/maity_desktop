@@ -4,9 +4,12 @@ import { BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummary
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
+import { logger } from '@/lib/logger';
+
+import type { MeetingRecord } from './types';
 
 interface UseCopyOperationsProps {
-  meeting: any;
+  meeting: MeetingRecord;
   transcripts: Transcript[];
   meetingTitle: string;
   aiSummary: Summary | null;
@@ -24,7 +27,7 @@ export function useCopyOperations({
   // Helper function to fetch ALL transcripts for copying (not just paginated data)
   const fetchAllTranscripts = useCallback(async (meetingId: string): Promise<Transcript[]> => {
     try {
-      console.log('📊 Fetching all transcripts for copying:', meetingId);
+      logger.debug('📊 Fetching all transcripts for copying:', meetingId);
 
       // First, get total count by fetching first page
       const firstPage = await invokeTauri('api_get_meeting_transcripts', {
@@ -34,7 +37,7 @@ export function useCopyOperations({
       }) as { transcripts: Transcript[]; total_count: number; has_more: boolean };
 
       const totalCount = firstPage.total_count;
-      console.log(`📊 Total transcripts in database: ${totalCount}`);
+      logger.debug(`📊 Total transcripts in database: ${totalCount}`);
 
       if (totalCount === 0) {
         return [];
@@ -47,7 +50,7 @@ export function useCopyOperations({
         offset: 0,
       }) as { transcripts: Transcript[]; total_count: number; has_more: boolean };
 
-      console.log(`✅ Fetched ${allData.transcripts.length} transcripts from database for copying`);
+      logger.debug(`✅ Fetched ${allData.transcripts.length} transcripts from database for copying`);
       return allData.transcripts;
     } catch (error) {
       console.error('❌ Error fetching all transcripts:', error);
@@ -59,17 +62,17 @@ export function useCopyOperations({
   // Copy transcript to clipboard
   const handleCopyTranscript = useCallback(async () => {
     // CHANGE: Fetch ALL transcripts from database, not from pagination state
-    console.log('📊 Fetching all transcripts for copying...');
+    logger.debug('📊 Fetching all transcripts for copying...');
     const allTranscripts = await fetchAllTranscripts(meeting.id);
 
     if (!allTranscripts.length) {
       const error_msg = 'No transcripts available to copy';
-      console.log(error_msg);
+      logger.debug(error_msg);
       toast.error(error_msg);
       return;
     }
 
-    console.log(`✅ Copying ${allTranscripts.length} transcripts to clipboard`);
+    logger.debug(`✅ Copying ${allTranscripts.length} transcripts to clipboard`);
 
     // Format timestamps as recording-relative [MM:SS] instead of wall-clock time
     const formatTime = (seconds: number | undefined, fallbackTimestamp: string): string => {
@@ -109,25 +112,25 @@ export function useCopyOperations({
     try {
       let summaryMarkdown = '';
 
-      console.log('🔍 Copy Summary - Starting...');
+      logger.debug('🔍 Copy Summary - Starting...');
 
       // Try to get markdown from BlockNote editor first
       if (blockNoteSummaryRef.current?.getMarkdown) {
-        console.log('📝 Trying to get markdown from ref...');
+        logger.debug('📝 Trying to get markdown from ref...');
         summaryMarkdown = await blockNoteSummaryRef.current.getMarkdown();
-        console.log('📝 Got markdown from ref, length:', summaryMarkdown.length);
+        logger.debug('📝 Got markdown from ref, length:', summaryMarkdown.length);
       }
 
       // Fallback: Check if aiSummary has markdown property
       if (!summaryMarkdown && aiSummary && 'markdown' in aiSummary) {
-        console.log('📝 Using markdown from aiSummary');
-        summaryMarkdown = (aiSummary as any).markdown || '';
-        console.log('📝 Markdown from aiSummary, length:', summaryMarkdown.length);
+        logger.debug('📝 Using markdown from aiSummary');
+        summaryMarkdown = (aiSummary as unknown as { markdown: string }).markdown || '';
+        logger.debug('📝 Markdown from aiSummary, length:', summaryMarkdown.length);
       }
 
       // Fallback: Check for legacy format
       if (!summaryMarkdown && aiSummary) {
-        console.log('📝 Converting legacy format to markdown');
+        logger.debug('📝 Converting legacy format to markdown');
         const sections = Object.entries(aiSummary)
           .filter(([key]) => {
             // Skip non-section keys
@@ -137,7 +140,7 @@ export function useCopyOperations({
             if (section && typeof section === 'object' && 'title' in section && 'blocks' in section) {
               const sectionTitle = `## ${section.title}\n\n`;
               const sectionContent = section.blocks
-                .map((block: any) => `- ${block.content}`)
+                .map((block: { content: string }) => `- ${block.content}`)
                 .join('\n');
               return sectionTitle + sectionContent;
             }
@@ -146,7 +149,7 @@ export function useCopyOperations({
           .filter(s => s.trim())
           .join('\n\n');
         summaryMarkdown = sections;
-        console.log('📝 Converted legacy format, length:', summaryMarkdown.length);
+        logger.debug('📝 Converted legacy format, length:', summaryMarkdown.length);
       }
 
       // If still no summary content, show message
@@ -175,7 +178,7 @@ export function useCopyOperations({
       const fullMarkdown = header + metadata + summaryMarkdown;
       await navigator.clipboard.writeText(fullMarkdown);
 
-      console.log('✅ Copiado al portapapeles exitosamente!');
+      logger.debug('✅ Copiado al portapapeles exitosamente!');
       toast.success("Resumen copiado al portapapeles");
 
       // Track copy analytics

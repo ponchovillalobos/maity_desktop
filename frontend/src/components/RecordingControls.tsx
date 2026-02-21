@@ -8,12 +8,15 @@ import { ProcessRequest, SummaryResponse } from '@/types/summary';
 import { listen } from '@tauri-apps/api/event';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AudioLevelMeter } from './AudioLevelMeter';
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
+import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 interface RecordingControlsProps {
   isRecording: boolean;
-  barHeights: string[];
+  audioLevels?: { micRms: number; micPeak: number; sysRms: number; sysPeak: number };
   onRecordingStop: (callApi?: boolean) => void;
   onRecordingStart: () => void;
   onTranscriptReceived: (summary: SummaryResponse) => void;
@@ -30,7 +33,7 @@ interface RecordingControlsProps {
 
 export const RecordingControls: React.FC<RecordingControlsProps> = ({
   isRecording,
-  barHeights,
+  audioLevels,
   onRecordingStop,
   onRecordingStart,
   onTranscriptReceived,
@@ -74,10 +77,10 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
     const checkTauri = async () => {
       try {
         const result = await invoke('is_recording');
-        console.log('Tauri is initialized and ready, is_recording result:', result);
+        logger.debug('Tauri is initialized and ready, is_recording result:', result);
       } catch (error) {
         console.error('Tauri initialization error:', error);
-        alert('Error al inicializar grabación. Por favor revisa la consola para más detalles.');
+        toast.error('Error al inicializar grabación');
       }
     };
     checkTauri();
@@ -85,10 +88,10 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 
   const handleStartRecording = useCallback(async () => {
     if (isStarting || isValidatingModel) return;
-    console.log('Starting recording...');
-    console.log('Selected devices:', selectedDevices);
-    console.log('Meeting name:', meetingName);
-    console.log('Current isRecording state:', isRecording);
+    logger.debug('Starting recording...');
+    logger.debug('Selected devices:', selectedDevices);
+    logger.debug('Meeting name:', meetingName);
+    logger.debug('Current isRecording state:', isRecording);
 
     setShowPlayback(false);
     setTranscript(''); // Clear any previous transcript
@@ -138,20 +141,20 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   }, [onRecordingStart, isStarting, isValidatingModel, selectedDevices, meetingName, isRecording]);
 
   const stopRecordingAction = useCallback(async () => {
-    console.log('Executing stop recording...');
+    logger.debug('Executing stop recording...');
     try {
       setIsProcessing(true);
       const dataDir = await appDataDir();
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const savePath = `${dataDir}/recording-${timestamp}.wav`;
-      console.log('Saving recording to:', savePath);
-      console.log('About to call stop_recording command');
+      logger.debug('Saving recording to:', savePath);
+      logger.debug('About to call stop_recording command');
       const result = await invoke('stop_recording', {
         args: {
           save_path: savePath
         }
       });
-      console.log('stop_recording command completed successfully:', result);
+      logger.debug('stop_recording command completed successfully:', result);
       setRecordingPath(savePath);
       // setShowPlayback(true);
       setIsProcessing(false);
@@ -184,13 +187,13 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   }, [onRecordingStop]);
 
   const handleStopRecording = useCallback(async () => {
-    console.log('handleStopRecording called - isRecording:', isRecording, 'isStarting:', isStarting, 'isStopping:', isStopping);
+    logger.debug('handleStopRecording called - isRecording:', isRecording, 'isStarting:', isStarting, 'isStopping:', isStopping);
     if (!isRecording || isStarting || isStopping) {
-      console.log('Early return from handleStopRecording due to state check');
+      logger.debug('Early return from handleStopRecording due to state check');
       return;
     }
 
-    console.log('Stopping recording...');
+    logger.debug('Stopping recording...');
 
     // Notify parent immediately (for UI state updates)
     onStopInitiated?.();
@@ -204,16 +207,16 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   const handlePauseRecording = useCallback(async () => {
     if (!isRecording || isPaused || isPausing) return;
 
-    console.log('Pausing recording...');
+    logger.debug('Pausing recording...');
     setIsPausing(true);
 
     try {
       await invoke('pause_recording');
       // isPaused state now managed by RecordingStateContext via events
-      console.log('Recording paused successfully');
+      logger.debug('Recording paused successfully');
     } catch (error) {
       console.error('Failed to pause recording:', error);
-      alert('Error al pausar grabación. Por favor revisa la consola para más detalles.');
+      toast.error('Error al pausar grabación');
     } finally {
       setIsPausing(false);
     }
@@ -222,16 +225,16 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   const handleResumeRecording = useCallback(async () => {
     if (!isRecording || !isPaused || isResuming) return;
 
-    console.log('Resuming recording...');
+    logger.debug('Resuming recording...');
     setIsResuming(true);
 
     try {
       await invoke('resume_recording');
       // isPaused state now managed by RecordingStateContext via events
-      console.log('Recording resumed successfully');
+      logger.debug('Recording resumed successfully');
     } catch (error) {
       console.error('Failed to resume recording:', error);
-      alert('Error al reanudar grabación. Por favor revisa la consola para más detalles.');
+      toast.error('Error al reanudar grabación');
     } finally {
       setIsResuming(false);
     }
@@ -244,27 +247,27 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   }, []);
 
   useEffect(() => {
-    console.log('Setting up recording event listeners');
+    logger.debug('Setting up recording event listeners');
     let unsubscribes: (() => void)[] = [];
 
     const setupListeners = async () => {
       try {
         // Transcript error listener - handles both regular and actionable errors
         const transcriptErrorUnsubscribe = await listen('transcript-error', (event) => {
-          console.log('transcript-error event received:', event);
+          logger.debug('transcript-error event received:', event);
           console.error('Transcription error received:', event.payload);
           const errorMessage = event.payload as string;
 
           Analytics.trackTranscriptionError(errorMessage);
-          console.log('Tracked transcription error:', errorMessage);
+          logger.debug('Tracked transcription error:', errorMessage);
 
           setTranscriptionErrors(prev => {
             const newCount = prev + 1;
-            console.log('Transcription error count incremented:', newCount);
+            logger.debug('Transcription error count incremented:', newCount);
             return newCount;
           });
           setIsProcessing(false);
-          console.log('Calling onRecordingStop(false) due to transcript error');
+          logger.debug('Calling onRecordingStop(false) due to transcript error');
           onRecordingStop(false);
           if (onTranscriptionError) {
             onTranscriptionError(errorMessage);
@@ -273,7 +276,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 
         // Transcription error listener - handles structured error objects with actionable flag
         const transcriptionErrorUnsubscribe = await listen('transcription-error', (event) => {
-          console.log('transcription-error event received:', event);
+          logger.debug('transcription-error event received:', event);
           console.error('Transcription error received:', event.payload);
 
           let errorMessage: string;
@@ -288,15 +291,15 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
           }
 
           Analytics.trackTranscriptionError(errorMessage);
-          console.log('Tracked transcription error:', errorMessage);
+          logger.debug('Tracked transcription error:', errorMessage);
 
           setTranscriptionErrors(prev => {
             const newCount = prev + 1;
-            console.log('Transcription error count incremented:', newCount);
+            logger.debug('Transcription error count incremented:', newCount);
             return newCount;
           });
           setIsProcessing(false);
-          console.log('Calling onRecordingStop(false) due to transcription error');
+          logger.debug('Calling onRecordingStop(false) due to transcription error');
           onRecordingStop(false);
 
           // For actionable errors (like model loading failures), the main page will handle showing the model selector
@@ -312,7 +315,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 
         // Speech detected listener - for UX feedback when VAD detects speech
         const speechDetectedUnsubscribe = await listen('speech-detected', (event) => {
-          console.log('speech-detected event received:', event);
+          logger.debug('speech-detected event received:', event);
           setSpeechDetected(true);
         });
 
@@ -321,7 +324,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
           transcriptionErrorUnsubscribe,
           speechDetectedUnsubscribe
         ];
-        console.log('Recording event listeners set up successfully');
+        logger.debug('Recording event listeners set up successfully');
       } catch (error) {
         console.error('Failed to set up recording event listeners:', error);
       }
@@ -330,7 +333,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
     setupListeners();
 
     return () => {
-      console.log('Cleaning up recording event listeners');
+      logger.debug('Cleaning up recording event listeners');
       unsubscribes.forEach(unsubscribe => {
         if (unsubscribe && typeof unsubscribe === 'function') {
           unsubscribe();
@@ -476,19 +479,27 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                     </>
                   )}
 
-                  <div className="flex items-center space-x-1 mx-4">
-                    {barHeights.map((height, index) => (
-                      <div
-                        key={index}
-                        className={`w-1 rounded-full transition-all duration-200 ${isPaused ? 'bg-[#ff4080]' : 'bg-[#ff0050]'
-                          }`}
-                        style={{
-                          height: isRecording && !isPaused ? height : '4px',
-                          opacity: isPaused ? 0.6 : 1,
-                        }}
+                  {/* Audio level meters */}
+                  {audioLevels && (
+                    <div className="flex flex-col gap-0.5 mx-3 min-w-[120px]">
+                      <AudioLevelMeter
+                        rmsLevel={isPaused ? 0 : audioLevels.micRms}
+                        peakLevel={isPaused ? 0 : audioLevels.micPeak}
+                        isActive={!isPaused && audioLevels.micRms > 0.001}
+                        deviceName="Mic"
+                        size="small"
+                        variant="mic"
                       />
-                    ))}
-                  </div>
+                      <AudioLevelMeter
+                        rmsLevel={isPaused ? 0 : audioLevels.sysRms}
+                        peakLevel={isPaused ? 0 : audioLevels.sysPeak}
+                        isActive={!isPaused && audioLevels.sysRms > 0.001}
+                        deviceName="Sistema"
+                        size="small"
+                        variant="system"
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </>

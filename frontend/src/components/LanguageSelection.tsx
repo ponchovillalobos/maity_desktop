@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Globe } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 export interface Language {
   code: string;
@@ -119,14 +120,14 @@ interface LanguageSelectionProps {
   selectedLanguage: string;
   onLanguageChange: (language: string) => void;
   disabled?: boolean;
-  provider?: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+  provider?: 'parakeet' | 'canary' | 'elevenLabs' | 'groq' | 'openai';
 }
 
 export function LanguageSelection({
   selectedLanguage,
   onLanguageChange,
   disabled = false,
-  provider = 'localWhisper'
+  provider = 'parakeet'
 }: LanguageSelectionProps) {
   const [saving, setSaving] = useState(false);
 
@@ -142,7 +143,7 @@ export function LanguageSelection({
       // Save language preference to backend
       await invoke('set_language_preference', { language: languageCode });
       onLanguageChange(languageCode);
-      console.log('Language preference saved:', languageCode);
+      logger.debug('Language preference saved:', languageCode);
 
       // Track language selection analytics
       const selectedLang = LANGUAGES.find(lang => lang.code === languageCode);

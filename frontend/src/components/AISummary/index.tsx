@@ -6,6 +6,7 @@ import { Section } from './Section';
 import { EditableTitle } from '../EditableTitle';
 import { ContextMenu } from './ContextMenu';
 import { ExclamationTriangleIcon, CheckCircleIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
+import { logger } from '@/lib/logger';
 
 interface Props {
   summary: Summary | null;
@@ -216,7 +217,7 @@ export const AISummary = ({ summary, status, error, onSummaryChange, onRegenerat
   };
 
   const handleTitleChange = (sectionKey: keyof Summary, newTitle: string) => {
-    console.log('Title change:', { sectionKey, newTitle });
+    logger.debug('Title change:', { sectionKey, newTitle });
     const updatedSummary = {
       ...currentSummary,
       [sectionKey]: {
@@ -224,7 +225,7 @@ export const AISummary = ({ summary, status, error, onSummaryChange, onRegenerat
         title: newTitle
       }
     };
-    console.log('Updated summary:', updatedSummary);
+    logger.debug('Updated summary:', updatedSummary);
     onSummaryChange(updatedSummary);
   };
 

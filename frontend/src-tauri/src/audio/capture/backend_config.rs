@@ -4,6 +4,10 @@ use std::sync::{Arc, RwLock};
 use once_cell::sync::Lazy;
 use log::info;
 
+// error! macro used in unwrap_or_else closures for RwLock poisoning recovery
+#[allow(unused_imports)]
+use log::error;
+
 /// Available audio capture backends
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -109,13 +113,19 @@ impl BackendConfig {
 
     /// Get current backend
     pub fn get(&self) -> AudioCaptureBackend {
-        *self.current_backend.read().unwrap()
+        *self.current_backend.read().unwrap_or_else(|e| {
+            error!("Backend config RwLock poisoned on read: {}", e);
+            e.into_inner()
+        })
     }
 
     /// Set current backend
     pub fn set(&self, backend: AudioCaptureBackend) {
         info!("Switching audio capture backend to: {:?}", backend);
-        *self.current_backend.write().unwrap() = backend;
+        *self.current_backend.write().unwrap_or_else(|e| {
+            error!("Backend config RwLock poisoned on write: {}", e);
+            e.into_inner()
+        }) = backend;
     }
 
     /// Get available backends

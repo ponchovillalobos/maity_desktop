@@ -32,7 +32,15 @@ impl DatabaseManager {
 
         let pool = SqlitePool::connect(tauri_db_path).await?;
 
-        sqlx::migrate!("./migrations").run(&pool).await?;
+        sqlx::migrate!("./migrations")
+            .set_ignore_missing(true)
+            .run(&pool)
+            .await?;
+
+        // Optimize SQLite performance
+        sqlx::query("PRAGMA synchronous = NORMAL").execute(&pool).await?;
+        sqlx::query("PRAGMA journal_mode = WAL").execute(&pool).await?;
+        sqlx::query("PRAGMA cache_size = -8000").execute(&pool).await?; // 8MB cache
 
         Ok(DatabaseManager { pool })
     }

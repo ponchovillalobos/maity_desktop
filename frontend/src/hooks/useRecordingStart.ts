@@ -8,6 +8,8 @@ import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
+import type { ParakeetModelInfo } from '@/lib/parakeet';
 
 interface UseRecordingStartReturn {
   handleRecordingStart: () => Promise<void>;
@@ -30,11 +32,10 @@ interface TranscriptionReadyResult {
  * - Analytics tracking
  * - Recording notification display
  * - Auto-start from sidebar via sessionStorage flag
- * - Provider-aware transcription validation (Deepgram, Parakeet, Whisper)
+ * - Provider-aware transcription validation (Parakeet, Whisper)
  */
 export function useRecordingStart(
   isRecording: boolean,
-  setIsRecording: (value: boolean) => void,
   showModal?: (name: 'modelSelector', message?: string) => void
 ): UseRecordingStartReturn {
   const [isAutoStarting, setIsAutoStarting] = useState(false);
@@ -58,44 +59,25 @@ export function useRecordingStart(
 
   // Check if transcription is ready based on selected provider
   const checkTranscriptionReady = useCallback(async (): Promise<TranscriptionReadyResult> => {
-    const provider = transcriptModelConfig?.provider || 'deepgram';
-    console.log(`Checking transcription readiness for provider: ${provider}`);
+    const provider = transcriptModelConfig?.provider || 'parakeet';
+    logger.debug(`Checking transcription readiness for provider: ${provider}`);
 
     try {
       switch (provider) {
-        case 'deepgram': {
-          // For Deepgram (cloud), just check if API key is configured
-          const apiKey = transcriptModelConfig?.apiKey;
-          if (apiKey && apiKey.trim().length > 0) {
-            console.log('✅ Deepgram API key is configured, ready to record');
-            return { ready: true, isDownloading: false };
-          }
-          console.log('❌ Deepgram API key not configured');
-          return {
-            ready: false,
-            isDownloading: false,
-            error: 'Clave API de Deepgram no configurada. Por favor configúrala en Ajustes → Transcripción.'
-          };
-        }
-
         case 'parakeet': {
           // For Parakeet, check if local models are available
           try {
             await invoke('parakeet_init');
             const hasModels = await invoke<boolean>('parakeet_has_available_models');
             if (hasModels) {
-              console.log('✅ Parakeet models available, ready to record');
+              logger.debug('✅ Parakeet models available, ready to record');
               return { ready: true, isDownloading: false };
             }
 
             // Check if downloading
-            const models = await invoke<any[]>('parakeet_get_available_models');
+            const models = await invoke<ParakeetModelInfo[]>('parakeet_get_available_models');
             const isDownloading = models.some(m =>
-              m.status && (
-                typeof m.status === 'object'
-                  ? 'Downloading' in m.status
-                  : m.status === 'Downloading'
-              )
+              m.status && typeof m.status === 'object' && 'Downloading' in m.status
             );
 
             return {
@@ -106,37 +88,6 @@ export function useRecordingStart(
           } catch (error) {
             console.error('Failed to check Parakeet status:', error);
             return { ready: false, isDownloading: false, error: 'Error al verificar Parakeet' };
-          }
-        }
-
-        case 'localWhisper': {
-          // For local Whisper, check if models are available
-          try {
-            await invoke('whisper_init');
-            const hasModels = await invoke<boolean>('whisper_has_available_models');
-            if (hasModels) {
-              console.log('✅ Whisper models available, ready to record');
-              return { ready: true, isDownloading: false };
-            }
-
-            // Check if downloading
-            const models = await invoke<any[]>('whisper_get_available_models');
-            const isDownloading = models.some(m =>
-              m.status && (
-                typeof m.status === 'object'
-                  ? 'Downloading' in m.status
-                  : m.status === 'Downloading'
-              )
-            );
-
-            return {
-              ready: false,
-              isDownloading,
-              error: 'Modelo de transcripción Whisper no disponible.'
-            };
-          } catch (error) {
-            console.error('Failed to check Whisper status:', error);
-            return { ready: false, isDownloading: false, error: 'Error al verificar Whisper' };
           }
         }
 
@@ -153,8 +104,8 @@ export function useRecordingStart(
   // Handle manual recording start (from button click)
   const handleRecordingStart = useCallback(async () => {
     try {
-      const provider = transcriptModelConfig?.provider || 'deepgram';
-      console.log(`handleRecordingStart called - checking ${provider} transcription status`);
+      const provider = transcriptModelConfig?.provider || 'parakeet';
+      logger.debug(`handleRecordingStart called - checking ${provider} transcription status`);
 
       // Check if transcription is ready based on selected provider
       const transcriptionStatus = await checkTranscriptionReady();
@@ -177,7 +128,7 @@ export function useRecordingStart(
         return;
       }
 
-      console.log(`${provider} ready - setting up meeting title and state`);
+      logger.debug(`${provider} ready - setting up meeting title and state`);
 
       const randomTitle = generateMeetingTitle();
       setMeetingTitle(randomTitle);
@@ -186,18 +137,17 @@ export function useRecordingStart(
       setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
       // Start the actual backend recording
-      console.log('Starting backend recording with meeting:', randomTitle);
+      logger.debug('Starting backend recording with meeting:', randomTitle);
       await recordingService.startRecordingWithDevices(
         selectedDevices?.micDevice || null,
         selectedDevices?.systemDevice || null,
         randomTitle
       );
-      console.log('Backend recording started successfully');
+      logger.debug('Backend recording started successfully');
 
       // Update state after successful backend start
       // Note: RECORDING status will be set by RecordingStateContext event listener
-      console.log('Setting isRecordingState to true');
-      setIsRecording(true); // This will also update the sidebar via the useEffect
+      // isRecording is now derived from RecordingStateContext (single source of truth)
       clearTranscripts(); // Clear previous transcripts when starting new recording
       setIsMeetingActive(true);
       Analytics.trackButtonClick('start_recording', 'home_page');
@@ -207,12 +157,11 @@ export function useRecordingStart(
     } catch (error) {
       console.error('Failed to start recording:', error);
       setStatus(RecordingStatus.ERROR, error instanceof Error ? error.message : 'Failed to start recording');
-      setIsRecording(false); // Reset state on error
       Analytics.trackButtonClick('start_recording_error', 'home_page');
       // Re-throw so RecordingControls can handle device-specific errors
       throw error;
     }
-  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, selectedDevices, showModal, setStatus, transcriptModelConfig]);
+  }, [generateMeetingTitle, setMeetingTitle, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, selectedDevices, showModal, setStatus, transcriptModelConfig]);
 
   // Check for autoStartRecording flag and start recording automatically
   useEffect(() => {
@@ -220,7 +169,7 @@ export function useRecordingStart(
       if (typeof window !== 'undefined') {
         const shouldAutoStart = sessionStorage.getItem('autoStartRecording');
         if (shouldAutoStart === 'true' && !isRecording && !isAutoStarting) {
-          console.log('Auto-starting recording from navigation...');
+          logger.debug('Auto-starting recording from navigation...');
           setIsAutoStarting(true);
           sessionStorage.removeItem('autoStartRecording'); // Clear the flag
 
@@ -254,18 +203,18 @@ export function useRecordingStart(
             // Set STARTING status before initiating backend recording
             setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
-            console.log('Auto-starting backend recording with meeting:', generatedMeetingTitle);
+            logger.debug('Auto-starting backend recording with meeting:', generatedMeetingTitle);
             const result = await recordingService.startRecordingWithDevices(
               selectedDevices?.micDevice || null,
               selectedDevices?.systemDevice || null,
               generatedMeetingTitle
             );
-            console.log('Auto-start backend recording result:', result);
+            logger.debug('Auto-start backend recording result:', result);
 
             // Update UI state after successful backend start
             // Note: RECORDING status will be set by RecordingStateContext event listener
+            // isRecording is now derived from RecordingStateContext (single source of truth)
             setMeetingTitle(generatedMeetingTitle);
-            setIsRecording(true);
             clearTranscripts();
             setIsMeetingActive(true);
             Analytics.trackButtonClick('start_recording', 'sidebar_auto');
@@ -275,7 +224,7 @@ export function useRecordingStart(
           } catch (error) {
             console.error('Failed to auto-start recording:', error);
             setStatus(RecordingStatus.ERROR, error instanceof Error ? error.message : 'Failed to auto-start recording');
-            alert('Failed to start recording. Check console for details.');
+            toast.error('Error al iniciar grabación');
             Analytics.trackButtonClick('start_recording_error', 'sidebar_auto');
           } finally {
             setIsAutoStarting(false);
@@ -291,7 +240,6 @@ export function useRecordingStart(
     selectedDevices,
     generateMeetingTitle,
     setMeetingTitle,
-    setIsRecording,
     clearTranscripts,
     setIsMeetingActive,
     checkTranscriptionReady,
@@ -308,10 +256,10 @@ export function useRecordingStart(
         const { listen } = await import('@tauri-apps/api/event');
         unlisten = await listen<string>('start-recording-from-detector', async (event) => {
           const meetingName = event.payload;
-          console.log(`🎤 Meeting detector triggered recording: "${meetingName}"`);
+          logger.debug(`🎤 Meeting detector triggered recording: "${meetingName}"`);
 
           if (isRecording || isAutoStarting) {
-            console.log('Recording already in progress, ignoring detector event');
+            logger.debug('Recording already in progress, ignoring detector event');
             return;
           }
 
@@ -338,7 +286,6 @@ export function useRecordingStart(
             );
 
             setMeetingTitle(meetingName);
-            setIsRecording(true);
             clearTranscripts();
             setIsMeetingActive(true);
             Analytics.trackButtonClick('start_recording', 'meeting_detector');
@@ -391,18 +338,18 @@ export function useRecordingStart(
         unlisten();
       }
     };
-  }, [isRecording, isAutoStarting, selectedDevices, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, setStatus]);
+  }, [isRecording, isAutoStarting, selectedDevices, setMeetingTitle, clearTranscripts, setIsMeetingActive, checkTranscriptionReady, setStatus]);
 
   // Listen for direct recording trigger from sidebar when already on home page
   useEffect(() => {
     const handleDirectStart = async () => {
       if (isRecording || isAutoStarting) {
-        console.log('Recording already in progress, ignoring direct start event');
+        logger.debug('Recording already in progress, ignoring direct start event');
         return;
       }
 
-      const provider = transcriptModelConfig?.provider || 'deepgram';
-      console.log(`Direct start from sidebar - checking ${provider} transcription status`);
+      const provider = transcriptModelConfig?.provider || 'parakeet';
+      logger.debug(`Direct start from sidebar - checking ${provider} transcription status`);
       setIsAutoStarting(true);
 
       // Check if transcription is ready based on selected provider
@@ -434,18 +381,18 @@ export function useRecordingStart(
         // Set STARTING status before initiating backend recording
         setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
-        console.log('Starting backend recording with meeting:', generatedMeetingTitle);
+        logger.debug('Starting backend recording with meeting:', generatedMeetingTitle);
         const result = await recordingService.startRecordingWithDevices(
           selectedDevices?.micDevice || null,
           selectedDevices?.systemDevice || null,
           generatedMeetingTitle
         );
-        console.log('Backend recording result:', result);
+        logger.debug('Backend recording result:', result);
 
         // Update UI state after successful backend start
         // Note: RECORDING status will be set by RecordingStateContext event listener
+        // isRecording is now derived from RecordingStateContext (single source of truth)
         setMeetingTitle(generatedMeetingTitle);
-        setIsRecording(true);
         clearTranscripts();
         setIsMeetingActive(true);
         Analytics.trackButtonClick('start_recording', 'sidebar_direct');
@@ -455,7 +402,7 @@ export function useRecordingStart(
       } catch (error) {
         console.error('Failed to start recording from sidebar:', error);
         setStatus(RecordingStatus.ERROR, error instanceof Error ? error.message : 'Failed to start recording from sidebar');
-        alert('Failed to start recording. Check console for details.');
+        toast.error('Error al iniciar grabación');
         Analytics.trackButtonClick('start_recording_error', 'sidebar_direct');
       } finally {
         setIsAutoStarting(false);
@@ -473,7 +420,6 @@ export function useRecordingStart(
     selectedDevices,
     generateMeetingTitle,
     setMeetingTitle,
-    setIsRecording,
     clearTranscripts,
     setIsMeetingActive,
     checkTranscriptionReady,

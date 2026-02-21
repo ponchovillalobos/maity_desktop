@@ -11,6 +11,7 @@ import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { useConfig } from '@/contexts/ConfigContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { logger } from '@/lib/logger';
 
 // Tabs configuration (constant)
 const TABS = [
@@ -33,12 +34,12 @@ export default function SettingsPage() {
   useEffect(() => {
     const loadTranscriptConfig = async () => {
       try {
-        const config = await invoke('api_get_transcript_config') as any;
+        const config = await invoke('api_get_transcript_config') as TranscriptModelProps;
         if (config) {
-          console.log('Loaded saved transcript config:', config);
+          logger.debug('Loaded saved transcript config:', config);
           setTranscriptModelConfig({
-            provider: config.provider || 'localWhisper',
-            model: config.model || 'large-v3',
+            provider: config.provider || 'parakeet',
+            model: config.model || 'parakeet-tdt-0.6b-v3-int8',
             apiKey: config.apiKey || null
           });
         }

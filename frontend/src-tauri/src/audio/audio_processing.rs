@@ -591,7 +591,7 @@ pub fn resample(input: &[f32], from_sample_rate: u32, to_sample_rate: u32) -> Re
     debug!("Resampling complete: {} samples → {} samples",
            input.len(), waves_out[0].len());
 
-    Ok(waves_out.into_iter().next().unwrap())
+    Ok(waves_out.into_iter().next().ok_or_else(|| anyhow::anyhow!("No resampler output"))?)
 }
 
 // Alias for compatibility with existing code

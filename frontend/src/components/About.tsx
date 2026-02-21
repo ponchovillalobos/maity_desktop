@@ -9,6 +9,7 @@ import { Button } from './ui/button';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogExporter } from './LogExporter';
+import { ConsoleToggle } from './ConsoleToggle';
 
 
 export function About() {
@@ -40,9 +41,9 @@ export function About() {
             } else {
                 toast.success('Estás ejecutando la última versión');
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to check for updates:', error);
-            toast.error('Error al buscar actualizaciones: ' + (error.message || 'Error desconocido'));
+            toast.error('Error al buscar actualizaciones: ' + (error instanceof Error ? error.message : 'Error desconocido'));
         } finally {
             setIsChecking(false);
         }
@@ -144,8 +145,9 @@ export function About() {
                     Creado por Zackriya Solutions
                 </p>
             </div>
-            {/* Log Export Section */}
+            {/* Diagnostics Section */}
             <LogExporter />
+            <ConsoleToggle />
 
             <AnalyticsConsentSwitch />
 

@@ -25,7 +25,7 @@ pub async fn init_analytics() -> Result<(), String> {
 
     let client = Arc::new(AnalyticsClient::new(config).await);
 
-    let mut guard = ANALYTICS_CLIENT.lock().unwrap();
+    let mut guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
     *guard = Some(client);
 
     Ok(())
@@ -33,7 +33,7 @@ pub async fn init_analytics() -> Result<(), String> {
 
 #[command]
 pub async fn disable_analytics() -> Result<(), String> {
-    let mut guard = ANALYTICS_CLIENT.lock().unwrap();
+    let mut guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
     *guard = None;
     Ok(())
 }
@@ -41,7 +41,7 @@ pub async fn disable_analytics() -> Result<(), String> {
 #[command]
 pub async fn track_event(event_name: String, properties: Option<HashMap<String, String>>) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -55,7 +55,7 @@ pub async fn track_event(event_name: String, properties: Option<HashMap<String, 
 #[command]
 pub async fn identify_user(user_id: String, properties: Option<HashMap<String, String>>) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -69,7 +69,7 @@ pub async fn identify_user(user_id: String, properties: Option<HashMap<String, S
 #[command]
 pub async fn track_meeting_started(meeting_id: String, meeting_title: String) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -83,7 +83,7 @@ pub async fn track_meeting_started(meeting_id: String, meeting_title: String) ->
 #[command]
 pub async fn track_recording_started(meeting_id: String) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -97,7 +97,7 @@ pub async fn track_recording_started(meeting_id: String) -> Result<(), String> {
 #[command]
 pub async fn track_recording_stopped(meeting_id: String, duration_seconds: Option<u64>) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -111,7 +111,7 @@ pub async fn track_recording_stopped(meeting_id: String, duration_seconds: Optio
 #[command]
 pub async fn track_meeting_deleted(meeting_id: String) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -125,7 +125,7 @@ pub async fn track_meeting_deleted(meeting_id: String) -> Result<(), String> {
 #[command]
 pub async fn track_settings_changed(setting_type: String, new_value: String) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -139,7 +139,7 @@ pub async fn track_settings_changed(setting_type: String, new_value: String) -> 
 #[command]
 pub async fn track_feature_used(feature_name: String) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -152,7 +152,7 @@ pub async fn track_feature_used(feature_name: String) -> Result<(), String> {
 
 #[command]
 pub async fn is_analytics_enabled() -> bool {
-    let guard = ANALYTICS_CLIENT.lock().unwrap();
+    let guard = ANALYTICS_CLIENT.lock().unwrap_or_else(|e| { log::error!("Lock poisoned: {}", e); e.into_inner() });
     guard.as_ref().map_or(false, |client| client.is_enabled())
 }
 
@@ -160,7 +160,7 @@ pub async fn is_analytics_enabled() -> bool {
 #[command]
 pub async fn start_analytics_session(user_id: String) -> Result<String, String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -174,7 +174,7 @@ pub async fn start_analytics_session(user_id: String) -> Result<String, String> 
 #[command]
 pub async fn end_analytics_session() -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -188,7 +188,7 @@ pub async fn end_analytics_session() -> Result<(), String> {
 #[command]
 pub async fn track_daily_active_user() -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -202,7 +202,7 @@ pub async fn track_daily_active_user() -> Result<(), String> {
 #[command]
 pub async fn track_user_first_launch() -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -217,7 +217,7 @@ pub async fn track_user_first_launch() -> Result<(), String> {
 #[command]
 pub async fn track_summary_generation_started(model_provider: String, model_name: String, transcript_length: usize) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -231,7 +231,7 @@ pub async fn track_summary_generation_started(model_provider: String, model_name
 #[command]
 pub async fn track_summary_generation_completed(model_provider: String, model_name: String, success: bool, duration_seconds: Option<u64>, error_message: Option<String>) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -245,7 +245,7 @@ pub async fn track_summary_generation_completed(model_provider: String, model_na
 #[command]
 pub async fn track_summary_regenerated(model_provider: String, model_name: String) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -259,7 +259,7 @@ pub async fn track_summary_regenerated(model_provider: String, model_name: Strin
 #[command]
 pub async fn track_model_changed(old_provider: String, old_model: String, new_provider: String, new_model: String) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
     
@@ -273,7 +273,7 @@ pub async fn track_model_changed(old_provider: String, old_model: String, new_pr
 #[command]
 pub async fn track_custom_prompt_used(prompt_length: usize) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
 
@@ -300,7 +300,7 @@ pub async fn track_meeting_ended(
     had_fatal_error: bool,
 ) -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
 
@@ -328,7 +328,7 @@ pub async fn track_meeting_ended(
 #[command]
 pub async fn track_analytics_enabled() -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
 
@@ -342,7 +342,7 @@ pub async fn track_analytics_enabled() -> Result<(), String> {
 #[command]
 pub async fn track_analytics_disabled() -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
 
@@ -356,7 +356,7 @@ pub async fn track_analytics_disabled() -> Result<(), String> {
 #[command]
 pub async fn track_analytics_transparency_viewed() -> Result<(), String> {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.as_ref().cloned()
     };
 
@@ -370,7 +370,7 @@ pub async fn track_analytics_transparency_viewed() -> Result<(), String> {
 #[command]
 pub async fn is_analytics_session_active() -> bool {
     let client = {
-        let guard = ANALYTICS_CLIENT.lock().unwrap();
+        let guard = ANALYTICS_CLIENT.lock().unwrap_or_else(|e| { log::error!("Lock poisoned: {}", e); e.into_inner() });
         guard.as_ref().cloned()
     };
     

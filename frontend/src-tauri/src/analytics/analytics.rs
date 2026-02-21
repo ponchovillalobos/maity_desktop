@@ -1,3 +1,4 @@
+use log::{error, warn};
 use posthog_rs::{Client, Event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -86,12 +87,12 @@ impl AnalyticsClient {
         // Add user properties
         for (key, value) in properties {
             if let Err(e) = event.insert_prop(&key, value) {
-                eprintln!("Failed to add property {}: {}", key, e);
+                warn!("Failed to add property {}: {}", key, e);
             }
         }
         
         if let Err(e) = client.capture(event).await {
-            eprintln!("Failed to identify user: {}", e);
+            error!("Failed to identify user: {}", e);
         }
         
         Ok(())
@@ -406,7 +407,7 @@ impl AnalyticsClient {
         let user_id = match self.user_id.lock().await.clone() {
             Some(id) => id,
             None => {
-                eprintln!("Warning: Attempted to set user properties before user identification");
+                warn!("Attempted to set user properties before user identification");
                 return Ok(());
             }
         };
@@ -416,12 +417,12 @@ impl AnalyticsClient {
         // Add user properties
         for (key, value) in properties {
             if let Err(e) = event.insert_prop(&key, value) {
-                eprintln!("Failed to add property {}: {}", key, e);
+                warn!("Failed to add property {}: {}", key, e);
             }
         }
         
         if let Err(e) = client.capture(event).await {
-            eprintln!("Failed to set user properties: {}", e);
+            error!("Failed to set user properties: {}", e);
         }
         
         Ok(())

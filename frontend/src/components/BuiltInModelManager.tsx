@@ -72,7 +72,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
-      unlisten = await listen('builtin-ai-download-progress', (event: any) => {
+      unlisten = await listen<{ model: string; progress: number; downloaded_mb?: number; total_mb?: number; speed_mbps?: number; status: string }>('builtin-ai-download-progress', (event) => {
         const { model, progress, downloaded_mb, total_mb, speed_mbps, status } = event.payload;
 
         // Update percentage progress
@@ -171,7 +171,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                     status: {
                       type: 'error',
                       progress: 0,
-                    } as any,
+                    } as ModelInfo['status'],
                   }
                 : m
             )
@@ -345,7 +345,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                     {(isError || isCorrupted) && (
                       <p className="mb-1 text-xs text-[#cc0040]">
                         {isError && typeof model.status === 'object' && 'Error' in model.status
-                          ? (model.status as any).Error
+                          ? (model.status as ModelInfo['status'] & { Error?: string }).Error
                           : isCorrupted
                           ? 'El archivo está corrupto. Reintentar descarga o eliminar.'
                           : 'Ocurrió un error'}

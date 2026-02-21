@@ -2,7 +2,6 @@ use log::{debug as log_debug, error as log_error, info as log_info, warn as log_
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::{AppHandle, Runtime};
-use tauri_plugin_store::StoreExt;
 
 use crate::{
     database::{
@@ -209,31 +208,6 @@ pub struct Profile {
     pub is_licensed: bool,
 }
 
-// Helper function to get auth token from store (optional)
-#[allow(dead_code)]
-async fn get_auth_token<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
-    let store = match app.store("store.json") {
-        Ok(store) => store,
-        Err(_) => return None,
-    };
-
-    match store.get("authToken") {
-        Some(token) => {
-            if let Some(token_str) = token.as_str() {
-                let truncated = token_str.chars().take(20).collect::<String>();
-                log_info!("Found auth token: {}", truncated);
-                Some(token_str.to_string())
-            } else {
-                log_warn!("Auth token is not a string");
-                None
-            }
-        }
-        None => {
-            log_warn!("No auth token found in store");
-            None
-        }
-    }
-}
 
 // Helper function to get server address - now hardcoded
 async fn get_server_address<R: Runtime>(_app: &AppHandle<R>) -> Result<String, String> {
@@ -638,7 +612,7 @@ pub async fn api_get_transcript_config<R: Runtime>(
             }
         }
         Ok(None) => {
-            log_info!("No transcript config found, returning default.");
+            log_info!("No transcript config found, returning default (parakeet).");
             Ok(Some(TranscriptConfig {
                 provider: "parakeet".to_string(),
                 model: "parakeet-tdt-0.6b-v3-int8".to_string(),

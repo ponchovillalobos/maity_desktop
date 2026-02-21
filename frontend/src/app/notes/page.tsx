@@ -1,36 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Clock, MessageSquare, ChevronRight, ListChecks } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserRole } from '@/hooks/useUserRole';
 import { getOmiConversations, OmiConversation } from '@/features/conversations';
 import { NoteDetail } from '@/features/notes';
 
 export default function NotesPage() {
-  const { isAdmin } = useUserRole();
-  const router = useRouter();
   const { maityUser } = useAuth();
   const [selectedConversation, setSelectedConversation] = useState<OmiConversation | null>(null);
-
-  useEffect(() => {
-    if (!isAdmin) {
-      router.replace('/');
-    }
-  }, [isAdmin, router]);
 
   const { data: conversations, isLoading, error } = useQuery({
     queryKey: ['omi-conversations', maityUser?.id],
     queryFn: () => getOmiConversations(maityUser?.id),
     enabled: !!maityUser?.id,
   });
-
-  if (!isAdmin) return null;
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return '--';

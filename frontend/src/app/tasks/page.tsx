@@ -1,32 +1,19 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ListChecks } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserRole } from '@/hooks/useUserRole';
 import { getOmiConversations } from '@/features/conversations';
 import { TasksList } from '@/features/tasks';
 
 export default function TasksPage() {
-  const { isAdmin } = useUserRole();
   const { maityUser } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isAdmin) {
-      router.replace('/');
-    }
-  }, [isAdmin, router]);
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['omi-conversations', maityUser?.id],
     queryFn: () => getOmiConversations(maityUser?.id),
     enabled: !!maityUser?.id,
   });
-
-  if (!isAdmin) return null;
 
   return (
     <div className="h-full flex flex-col bg-muted">

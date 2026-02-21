@@ -39,9 +39,8 @@ export function ResumenHero({ feedback }: ResumenHeroProps) {
         <path
           d="M 20 100 A 80 80 0 0 1 180 100"
           fill="none"
-          stroke="currentColor"
+          stroke="hsl(var(--muted) / 0.2)"
           strokeWidth={strokeWidth}
-          className="text-muted/20"
           strokeLinecap="round"
         />
         {/* Score arc */}
@@ -60,7 +59,7 @@ export function ResumenHero({ feedback }: ResumenHeroProps) {
           x="100"
           y="85"
           textAnchor="middle"
-          className="fill-foreground"
+          fill="hsl(var(--foreground))"
           style={{ fontSize: '36px', fontWeight: 800 }}
         >
           {score.toFixed(1)}
@@ -69,7 +68,7 @@ export function ResumenHero({ feedback }: ResumenHeroProps) {
           x="100"
           y="105"
           textAnchor="middle"
-          className="fill-muted-foreground"
+          fill="hsl(var(--muted-foreground))"
           style={{ fontSize: '12px' }}
         >
           {label}
